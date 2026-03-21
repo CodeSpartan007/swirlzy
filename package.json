@@ -13,7 +13,7 @@
     "@react-three/drei": "^9.99.0",
     "@react-three/fiber": "^8.15.0",
     "@vercel/analytics": "1.6.1",
-    "three": "^r129",
+    "three": "^0.160.0",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",
     "@radix-ui/react-aspect-ratio": "1.1.8",
