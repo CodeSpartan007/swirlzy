@@ -180,6 +180,8 @@ export default function GenerativeCanvas() {
   const [waveIntensity, setWaveIntensity] = useState(1);
   const [colorPalette, setColorPalette] = useState(0);
   const [showUI, setShowUI] = useState(true);
+  const [hasWebGL, setHasWebGL] = useState(true);
+  const [webglError, setWebglError] = useState<string | null>(null);
   const hideUITimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleMouseMove = () => {
@@ -193,6 +195,22 @@ export default function GenerativeCanvas() {
   };
 
   useEffect(() => {
+    // Check WebGL support
+    try {
+      const canvas = document.createElement('canvas');
+      const gl =
+        canvas.getContext('webgl') || canvas.getContext('webgl2');
+      if (!gl) {
+        setHasWebGL(false);
+        setWebglError('WebGL not supported in your browser');
+      }
+    } catch (err) {
+      setHasWebGL(false);
+      setWebglError(
+        err instanceof Error ? err.message : 'Unknown WebGL error'
+      );
+    }
+
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
@@ -230,14 +248,39 @@ export default function GenerativeCanvas() {
     return () => window.removeEventListener('wheel', handleScroll);
   }, []);
 
+  // Fallback UI for WebGL not supported
+  if (!hasWebGL) {
+    return (
+      <div
+        className="relative w-full h-screen overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-black flex items-center justify-center"
+        style={{
+          background: `linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)`,
+        }}
+      >
+        <div className="text-center px-6">
+          <h1 className="text-4xl font-bold text-white mb-4">Generative Art</h1>
+          <p className="text-gray-300 mb-2">WebGL is not available</p>
+          <p className="text-gray-400 text-sm">{webglError}</p>
+          <p className="text-gray-500 text-sm mt-4">
+            Please use a modern browser with WebGL support
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative w-full h-screen overflow-hidden bg-black">
       <Canvas
         gl={{
           antialias: true,
           powerPreference: 'high-performance',
+          failOnContextLoss: false,
         }}
         camera={{ position: [0, 0, 1], far: 1000 }}
+        onCreated={(state) => {
+          state.gl.setClearColor(0x000000);
+        }}
       >
         <GenerativeShader
           speed={isPaused ? 0 : speed}
