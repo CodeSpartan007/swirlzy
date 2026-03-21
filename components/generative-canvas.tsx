@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useControls } from 'leva';
+import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 const vertexShader = `
