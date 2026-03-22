@@ -15,6 +15,8 @@ const vertexShader = `
 const fragmentShader = `
   uniform float uTime;
   uniform vec2 uMouse;
+  uniform vec2 uMouseVelocity;
+  uniform float uMouseForce;
   uniform float uSpeed;
   uniform vec3 uColor1;
   uniform vec3 uColor2;
@@ -109,6 +111,29 @@ const fragmentShader = `
     return tangent * circulation;
   }
   
+  // Momentum-driven liquid pushing effect from mouse velocity
+  vec2 mouseInertiaFlow(vec2 pos, vec2 mousePos, vec2 mouseVel, float force) {
+    vec2 delta = pos - mousePos;
+    float r = length(delta);
+    
+    // Smooth Gaussian falloff for liquid-like pushing
+    float falloff = exp(-r * r * 6.0);
+    
+    // Directional push along velocity vector with smooth decay
+    vec2 push = mouseVel * falloff * force;
+    
+    // Create secondary swirl around the push direction
+    float angle = atan(delta.y, delta.x);
+    float velAngle = atan(mouseVel.y, mouseVel.x);
+    float swirl = sin(angle - velAngle) * 0.5 + 0.5;
+    
+    // Add perpendicular curl for liquid-like motion
+    vec2 perpendicular = vec2(-mouseVel.y, mouseVel.x);
+    push += perpendicular * swirl * falloff * force * 0.3;
+    
+    return push;
+  }
+  
   // Advect particles through flow field
   vec2 advectPosition(vec2 pos, float time) {
     // Primary rotating flow from center
@@ -117,11 +142,14 @@ const fragmentShader = `
     // Mouse-driven vortex (interactive)
     vec2 mouseVortex = vortexFlow(pos, uMouse, uWaveIntensity * 2.0, time);
     
+    // Momentum-driven liquid push from mouse movement (with inertia)
+    vec2 inertiaFlow = mouseInertiaFlow(pos, uMouse, uMouseVelocity, uMouseForce);
+    
     // Curl noise for added turbulence
     vec2 turbulence = curlFlow(pos * 3.0, time) * 0.5;
     
-    // Combine flows
-    vec2 flow = centerVortex * 0.6 + mouseVortex * 0.3 + turbulence * 0.1;
+    // Combine flows: inertia adds immediate responsive push
+    vec2 flow = centerVortex * 0.5 + mouseVortex * 0.2 + inertiaFlow * 0.4 + turbulence * 0.1;
     
     // Advect position along flow
     return pos + flow * 0.02;
@@ -226,6 +254,9 @@ export default function ShaderCanvas({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
   const mouseRef = useRef({ x: 0.5, y: 0.5 });
+  const mouseVelocityRef = useRef({ x: 0, y: 0 });
+  const mouseForceRef = useRef(0);
+  const previousMouseRef = useRef({ x: 0.5, y: 0.5 });
   const clockRef = useRef(new THREE.Clock());
   const animationIdRef = useRef<number | null>(null);
 
@@ -298,6 +329,8 @@ export default function ShaderCanvas({
     const uniforms = {
       uTime: { value: 0 },
       uMouse: { value: new THREE.Vector2(0.5, 0.5) },
+      uMouseVelocity: { value: new THREE.Vector2(0, 0) },
+      uMouseForce: { value: 0 },
       uSpeed: { value: speed },
       uWaveIntensity: { value: waveIntensity },
       uColor1: { value: colorPalettes[0].color1 },
@@ -323,9 +356,15 @@ export default function ShaderCanvas({
       const elapsed = isPaused ? 0 : clockRef.current.getElapsedTime();
 
       if (material) {
+        // Apply inertial decay to mouse force (smooth falloff)
+        mouseForceRef.current *= 0.92; // Friction coefficient for smooth decay
+
         material.uniforms.uTime.value = elapsed;
         material.uniforms.uMouse.value.x = mouseRef.current.x;
         material.uniforms.uMouse.value.y = mouseRef.current.y;
+        material.uniforms.uMouseVelocity.value.x = mouseVelocityRef.current.x;
+        material.uniforms.uMouseVelocity.value.y = mouseVelocityRef.current.y;
+        material.uniforms.uMouseForce.value = mouseForceRef.current;
         material.uniforms.uSpeed.value = speed;
         material.uniforms.uWaveIntensity.value = waveIntensity;
 
@@ -340,10 +379,26 @@ export default function ShaderCanvas({
 
     animate();
 
-    // Mouse tracking
+    // Mouse tracking with velocity calculation
     const handleMouseMove = (e: MouseEvent) => {
-      mouseRef.current.x = e.clientX / window.innerWidth;
-      mouseRef.current.y = 1 - e.clientY / window.innerHeight;
+      const newX = e.clientX / window.innerWidth;
+      const newY = 1 - e.clientY / window.innerHeight;
+
+      // Calculate velocity (change in position per frame)
+      mouseVelocityRef.current.x = newX - mouseRef.current.x;
+      mouseVelocityRef.current.y = newY - mouseRef.current.y;
+
+      // Calculate velocity magnitude for force
+      const velocityMagnitude = Math.sqrt(
+        mouseVelocityRef.current.x ** 2 + mouseVelocityRef.current.y ** 2
+      );
+
+      // Apply force based on velocity (faster movement = more liquid push)
+      mouseForceRef.current = Math.min(velocityMagnitude * 3.0, 1.5);
+
+      // Update position
+      mouseRef.current.x = newX;
+      mouseRef.current.y = newY;
     };
 
     // Click ripple effect
