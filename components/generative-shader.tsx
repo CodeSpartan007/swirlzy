@@ -50,15 +50,37 @@ const fragmentShader = `
     return 130.0 * dot(m, g);
   }
   
+  // Layered fractional Brownian motion for complex depth
+  float fbm(vec2 pos, float time, int octaves) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    float frequency = 1.0;
+    float maxValue = 0.0;
+    
+    for (int i = 0; i < 8; i++) {
+      if (i >= octaves) break;
+      
+      value += amplitude * snoise(pos * frequency + time * 0.15);
+      maxValue += amplitude;
+      
+      // Modulate frequency and phase for more complex patterns
+      frequency *= 2.345;
+      amplitude *= 0.5;
+      pos *= 1.8 + sin(time * 0.2 + float(i)) * 0.3;
+    }
+    
+    return value / maxValue;
+  }
+  
   // Vector field-based curl noise for smooth fluid motion
   vec2 curlFlow(vec2 pos, float time) {
-    float n1 = snoise(pos + time * 0.2);
-    float n2 = snoise(pos + 5.234 + time * 0.2);
-    float n3 = snoise(pos + 10.768 + time * 0.2);
+    float n1 = fbm(pos, time, 4);
+    float n2 = fbm(pos + 5.234, time, 4);
+    float n3 = fbm(pos + 10.768, time, 4);
     
     vec2 grad = normalize(vec2(
-      snoise(pos + vec2(0.01, 0.0) + time * 0.2) - n1,
-      snoise(pos + vec2(0.0, 0.01) + time * 0.2) - n2
+      fbm(pos + vec2(0.01, 0.0), time, 3) - n1,
+      fbm(pos + vec2(0.0, 0.01), time, 3) - n2
     ));
     
     // Create perpendicular flow (curl)
@@ -109,10 +131,14 @@ const fragmentShader = `
     vec2 uv = vUv;
     vec2 advected = advectPosition(uv, uTime * uSpeed);
     
-    // Sample density along advected path
-    float density = snoise(advected * 4.0) * 0.5 + 0.5;
-    density += snoise(advected * 8.0 + uTime * uSpeed * 0.5) * 0.25;
-    density += snoise(advected * 2.0 - uTime * uSpeed * 0.3) * 0.25;
+    // Multi-layer FBM sampling for deep complexity
+    float fbmDensity1 = fbm(advected * 2.0, uTime * uSpeed, 6);
+    float fbmDensity2 = fbm(advected * 4.0 + uTime * 0.5, uTime * uSpeed, 5);
+    float fbmDensity3 = fbm(advected * 8.0 - uTime * 0.3, uTime * uSpeed, 4);
+    float fbmDensity4 = fbm(advected * 16.0, uTime * uSpeed * 0.7, 3);
+    
+    // Layer density with varying weights
+    float density = fbmDensity1 * 0.4 + fbmDensity2 * 0.3 + fbmDensity3 * 0.2 + fbmDensity4 * 0.1;
     
     // Get velocity magnitude for color brightness
     vec2 flowVel = advectPosition(uv, uTime * uSpeed) - uv;
@@ -125,35 +151,58 @@ const fragmentShader = `
     float angle = atan(toCenter.y, toCenter.x);
     float radius = length(toCenter);
     
-    // Spiral pattern flowing outward/inward
-    float spiral = sin(angle * 4.0 - radius * 8.0 - uTime * uSpeed * 2.0) * 0.5 + 0.5;
+    // Multi-layer spiral patterns with different frequencies
+    float spiral1 = sin(angle * 3.0 - radius * 6.0 - uTime * uSpeed * 1.5) * 0.5 + 0.5;
+    float spiral2 = sin(angle * 7.0 - radius * 12.0 - uTime * uSpeed * 2.3) * 0.5 + 0.5;
+    float spiral3 = sin(angle * 13.0 - radius * 20.0 - uTime * uSpeed * 3.1) * 0.5 + 0.5;
     
     // Vortex strength decreases toward edges
     float vortexStrength = exp(-radius * radius * 3.0);
-    spiral = mix(spiral, density, 0.4);
     
-    // Mouse influence on pattern
-    float mouseInfluence = exp(-distance(uv, uMouse) * 4.0) * uWaveIntensity;
-    spiral = mix(spiral, speed, mouseInfluence * 0.3);
+    // Combine spirals for fractal-like complexity
+    float spiral = spiral1 * 0.5 + spiral2 * 0.35 + spiral3 * 0.15;
+    spiral = mix(spiral, density, 0.5);
     
-    // Multi-layer color based on flow properties
-    float colorFlow = spiral * 0.5 + density * 0.3 + speed * 0.2;
+    // Mouse influence on pattern with stronger effect
+    float mouseInfluence = exp(-distance(uv, uMouse) * 3.0) * uWaveIntensity;
+    spiral = mix(spiral, speed, mouseInfluence * 0.5);
     
-    // Smooth color transitions along the flow
-    float hueShift = angle * 0.159 + uTime * uSpeed * 0.1;
-    float colorMix1 = sin(colorFlow * PI + hueShift) * 0.5 + 0.5;
-    float colorMix2 = cos(colorFlow * PI + hueShift + 2.094) * 0.5 + 0.5;
+    // Multi-octave color cycling for psychedelic effect
+    float colorFlow = spiral * 0.4 + density * 0.35 + speed * 0.25;
     
-    // Blend colors based on flow field
+    // Complex hue shifting with multiple time-dependent waves
+    float hueShift = angle * 0.159 + uTime * uSpeed * 0.15;
+    float hueShift2 = radius * 0.5 - uTime * uSpeed * 0.2;
+    float hueShift3 = (angle + radius) * 0.3 + uTime * uSpeed * 0.1;
+    
+    // Multi-level color cycling
+    float colorMix1 = sin(colorFlow * PI * 2.0 + hueShift) * 0.5 + 0.5;
+    float colorMix2 = cos(colorFlow * PI + hueShift2) * 0.5 + 0.5;
+    float colorMix3 = sin(colorFlow * PI * 0.5 + hueShift3) * 0.5 + 0.5;
+    float colorMix4 = cos(colorFlow * PI * 1.5 + hueShift) * 0.5 + 0.5;
+    
+    // Psychedelic color blending
     vec3 color = mix(uColor1, uColor2, colorMix1);
     color = mix(color, uColor3, colorMix2);
     
-    // Enhance brightness where flow is faster
-    color += vec3(0.15, 0.1, 0.2) * speed * vortexStrength;
+    // Add interference patterns for extra depth
+    float interference = sin(colorFlow * 10.0 + angle * 5.0) * 0.5 + 0.5;
+    interference *= cos(density * 8.0 + uTime * 2.0) * 0.5 + 0.5;
     
-    // Add subtle color saturation boost in high-flow regions
+    // Blend with interference for psychedelic shimmer
+    color = mix(color, vec3(colorMix3, colorMix4, interference), 0.15);
+    
+    // Enhance brightness where flow is faster with glow effect
+    color += vec3(0.2, 0.15, 0.25) * speed * vortexStrength;
+    color += vec3(0.1, 0.2, 0.15) * density * interference;
+    
+    // Dynamic saturation boost based on multiple factors
     vec3 saturated = color * color;
-    color = mix(color, saturated, speed * 0.3);
+    float saturation = speed * 0.4 + density * 0.3 + interference * 0.3;
+    color = mix(color, saturated, saturation * 0.5);
+    
+    // Final psychedelic boost
+    color = pow(color, vec3(0.9, 1.0, 1.1));
     
     gl_FragColor = vec4(color, 1.0);
   }
