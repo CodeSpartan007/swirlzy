@@ -50,76 +50,110 @@ const fragmentShader = `
     return 130.0 * dot(m, g);
   }
   
-  // Fractal Brownian Motion for smooth, organic patterns
-  float fbm(vec2 st, float time) {
-    float value = 0.0;
-    float amplitude = 0.5;
-    float frequency = 1.0;
-    float maxAmplitude = 0.0;
+  // Vector field-based curl noise for smooth fluid motion
+  vec2 curlFlow(vec2 pos, float time) {
+    float n1 = snoise(pos + time * 0.2);
+    float n2 = snoise(pos + 5.234 + time * 0.2);
+    float n3 = snoise(pos + 10.768 + time * 0.2);
     
-    for (int i = 0; i < 5; i++) {
-      value += amplitude * snoise(st * frequency + time * 0.3);
-      maxAmplitude += amplitude;
-      st *= 2.0;
-      frequency *= 2.0;
-      amplitude *= 0.5;
-    }
+    vec2 grad = normalize(vec2(
+      snoise(pos + vec2(0.01, 0.0) + time * 0.2) - n1,
+      snoise(pos + vec2(0.0, 0.01) + time * 0.2) - n2
+    ));
     
-    return value / maxAmplitude;
+    // Create perpendicular flow (curl)
+    return vec2(-grad.y, grad.x) * n3;
   }
   
-  // Domain warping for complex swirling motion
-  vec2 domainWarp(vec2 st, float time) {
-    vec2 q = vec2(fbm(st + time * 0.1, time), fbm(st + vec2(5.2, 1.3) + time * 0.1, time));
-    vec2 r = vec2(fbm(st + 2.0 * q + time * 0.1, time), fbm(st + 2.0 * q + vec2(1.7, 9.2) + time * 0.1, time));
-    return r;
+  // Multiple vortices creating fluid dynamics
+  vec2 vortexFlow(vec2 pos, vec2 vortexPos, float strength, float time) {
+    vec2 delta = pos - vortexPos;
+    float r = length(delta);
+    
+    // Prevent singularity
+    r = max(r, 0.1);
+    
+    // Tangential velocity field (rotation around vortex)
+    float angle = atan(delta.y, delta.x);
+    vec2 tangent = vec2(-sin(angle), cos(angle));
+    
+    // Velocity decreases with distance (realistic vortex decay)
+    float decay = exp(-r * r * 2.0);
+    float circulation = strength * decay / (r + 0.1);
+    
+    // Add time-based pulsing for dynamics
+    circulation *= (sin(uTime * 2.0 + angle * 3.0) * 0.3 + 0.7);
+    
+    return tangent * circulation;
+  }
+  
+  // Advect particles through flow field
+  vec2 advectPosition(vec2 pos, float time) {
+    // Primary rotating flow from center
+    vec2 centerVortex = vortexFlow(pos, vec2(0.5, 0.5), 1.5, time);
+    
+    // Mouse-driven vortex (interactive)
+    vec2 mouseVortex = vortexFlow(pos, uMouse, uWaveIntensity * 2.0, time);
+    
+    // Curl noise for added turbulence
+    vec2 turbulence = curlFlow(pos * 3.0, time) * 0.5;
+    
+    // Combine flows
+    vec2 flow = centerVortex * 0.6 + mouseVortex * 0.3 + turbulence * 0.1;
+    
+    // Advect position along flow
+    return pos + flow * 0.02;
   }
   
   void main() {
     vec2 uv = vUv;
+    vec2 advected = advectPosition(uv, uTime * uSpeed);
+    
+    // Sample density along advected path
+    float density = snoise(advected * 4.0) * 0.5 + 0.5;
+    density += snoise(advected * 8.0 + uTime * uSpeed * 0.5) * 0.25;
+    density += snoise(advected * 2.0 - uTime * uSpeed * 0.3) * 0.25;
+    
+    // Get velocity magnitude for color brightness
+    vec2 flowVel = advectPosition(uv, uTime * uSpeed) - uv;
+    float speed = length(flowVel) * 20.0;
+    speed = clamp(speed, 0.0, 1.0);
+    
+    // Create rotation pattern from polar coordinates
     vec2 center = vec2(0.5, 0.5);
-    
-    // Polar coordinates for vortex-like effect
-    vec2 toCenter = uv - center;
+    vec2 toCenter = advected - center;
     float angle = atan(toCenter.y, toCenter.x);
-    float dist = length(toCenter);
+    float radius = length(toCenter);
     
-    // Apply domain warping for fluid distortion
-    vec2 warpUv = domainWarp(uv + angle * 0.5, uTime * uSpeed);
+    // Spiral pattern flowing outward/inward
+    float spiral = sin(angle * 4.0 - radius * 8.0 - uTime * uSpeed * 2.0) * 0.5 + 0.5;
     
-    // Mouse-driven fluid distortion (smooth, dragging liquid effect)
-    vec2 mouseOffset = (uMouse - center) * 0.3;
-    vec2 distortedUv = uv + mouseOffset * exp(-dist * 8.0);
+    // Vortex strength decreases toward edges
+    float vortexStrength = exp(-radius * radius * 3.0);
+    spiral = mix(spiral, density, 0.4);
     
-    // Multi-scale fbm for smooth, layered effect
-    float fbmValue = fbm(distortedUv * 2.0 + warpUv * 0.5, uTime * uSpeed * 0.8);
+    // Mouse influence on pattern
+    float mouseInfluence = exp(-distance(uv, uMouse) * 4.0) * uWaveIntensity;
+    spiral = mix(spiral, speed, mouseInfluence * 0.3);
     
-    // Vortex rotation based on distance and time
-    float vortex = sin(angle * 5.0 - uTime * uSpeed * 0.5) * 0.5 + 0.5;
-    float turbulence = fbm(uv * 3.0 + uTime * uSpeed * 0.3, uTime * uSpeed) * 0.5 + 0.5;
+    // Multi-layer color based on flow properties
+    float colorFlow = spiral * 0.5 + density * 0.3 + speed * 0.2;
     
-    // Ripple waves propagating from mouse
-    float mouseDistance = distance(uv, uMouse);
-    float ripple = sin(mouseDistance * 30.0 - uTime * 6.0) * 0.5 + 0.5;
-    ripple *= exp(-mouseDistance * 4.0) * uWaveIntensity;
+    // Smooth color transitions along the flow
+    float hueShift = angle * 0.159 + uTime * uSpeed * 0.1;
+    float colorMix1 = sin(colorFlow * PI + hueShift) * 0.5 + 0.5;
+    float colorMix2 = cos(colorFlow * PI + hueShift + 2.094) * 0.5 + 0.5;
     
-    // Combine all effects smoothly
-    float pattern = fbmValue * 0.4 + vortex * 0.35 + turbulence * 0.25;
-    pattern += ripple * 0.3;
-    
-    // Smooth color blending with gradients
-    float colorMix = sin(pattern * PI * 2.0 + uTime * uSpeed * 0.4) * 0.5 + 0.5;
-    float colorMix2 = cos(pattern * PI + uTime * uSpeed * 0.3) * 0.5 + 0.5;
-    
-    // Blend three colors smoothly
-    vec3 color = mix(uColor1, uColor2, colorMix);
+    // Blend colors based on flow field
+    vec3 color = mix(uColor1, uColor2, colorMix1);
     color = mix(color, uColor3, colorMix2);
     
-    // Add subtle glow/bloom effect
-    color += vec3(0.1, 0.05, 0.15) * (fbmValue * 0.3 + vortex * 0.2);
+    // Enhance brightness where flow is faster
+    color += vec3(0.15, 0.1, 0.2) * speed * vortexStrength;
     
-    // Smoothness and saturation
-    color = mix(color, color * color, 0.2);
+    // Add subtle color saturation boost in high-flow regions
+    vec3 saturated = color * color;
+    color = mix(color, saturated, speed * 0.3);
     
     gl_FragColor = vec4(color, 1.0);
   }
