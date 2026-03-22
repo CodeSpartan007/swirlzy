@@ -22,6 +22,8 @@ const fragmentShader = `
   uniform float uWaveIntensity;
   varying vec2 vUv;
   
+  const float PI = 3.141592653589793;
+  
   // Simplex noise function
   vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
   float snoise(vec2 v){
@@ -48,33 +50,76 @@ const fragmentShader = `
     return 130.0 * dot(m, g);
   }
   
+  // Fractal Brownian Motion for smooth, organic patterns
+  float fbm(vec2 st, float time) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    float frequency = 1.0;
+    float maxAmplitude = 0.0;
+    
+    for (int i = 0; i < 5; i++) {
+      value += amplitude * snoise(st * frequency + time * 0.3);
+      maxAmplitude += amplitude;
+      st *= 2.0;
+      frequency *= 2.0;
+      amplitude *= 0.5;
+    }
+    
+    return value / maxAmplitude;
+  }
+  
+  // Domain warping for complex swirling motion
+  vec2 domainWarp(vec2 st, float time) {
+    vec2 q = vec2(fbm(st + time * 0.1, time), fbm(st + vec2(5.2, 1.3) + time * 0.1, time));
+    vec2 r = vec2(fbm(st + 2.0 * q + time * 0.1, time), fbm(st + 2.0 * q + vec2(1.7, 9.2) + time * 0.1, time));
+    return r;
+  }
+  
   void main() {
     vec2 uv = vUv;
+    vec2 center = vec2(0.5, 0.5);
     
-    // Mouse ripple
-    float ripple = sin(distance(uv, uMouse) * 20.0 - uTime * 4.0) * 0.5 + 0.5;
-    ripple *= exp(-distance(uv, uMouse) * 3.0);
+    // Polar coordinates for vortex-like effect
+    vec2 toCenter = uv - center;
+    float angle = atan(toCenter.y, toCenter.x);
+    float dist = length(toCenter);
     
-    // Multi-layered noise
-    float noise1 = snoise(uv * 3.0 + uTime * uSpeed * 0.1) * 0.5 + 0.5;
-    float noise2 = snoise(uv * 5.0 + uTime * uSpeed * 0.15 + vec2(100.0)) * 0.5 + 0.5;
-    float noise3 = snoise(uv * 8.0 + uTime * uSpeed * 0.2 + vec2(200.0)) * 0.5 + 0.5;
+    // Apply domain warping for fluid distortion
+    vec2 warpUv = domainWarp(uv + angle * 0.5, uTime * uSpeed);
     
-    // Mouse distortion
-    vec2 distorted = uv + (uMouse - 0.5) * 0.2;
-    float noiseFlow = snoise(distorted * 4.0 + uTime * uSpeed * 0.12);
+    // Mouse-driven fluid distortion (smooth, dragging liquid effect)
+    vec2 mouseOffset = (uMouse - center) * 0.3;
+    vec2 distortedUv = uv + mouseOffset * exp(-dist * 8.0);
     
-    // Combine layers
-    float combined = noise1 * 0.5 + noise2 * 0.3 + noise3 * 0.2;
-    combined += ripple * uWaveIntensity * 0.5;
-    combined += noiseFlow * 0.1;
+    // Multi-scale fbm for smooth, layered effect
+    float fbmValue = fbm(distortedUv * 2.0 + warpUv * 0.5, uTime * uSpeed * 0.8);
     
-    // Color interpolation
-    vec3 color = mix(uColor1, uColor2, combined);
-    color = mix(color, uColor3, sin(combined + uTime * 0.5) * 0.5 + 0.5);
+    // Vortex rotation based on distance and time
+    float vortex = sin(angle * 5.0 - uTime * uSpeed * 0.5) * 0.5 + 0.5;
+    float turbulence = fbm(uv * 3.0 + uTime * uSpeed * 0.3, uTime * uSpeed) * 0.5 + 0.5;
     
-    // Add some brightness variation
-    color += sin(uTime * 0.3 + uv.y * 5.0) * 0.1;
+    // Ripple waves propagating from mouse
+    float mouseDistance = distance(uv, uMouse);
+    float ripple = sin(mouseDistance * 30.0 - uTime * 6.0) * 0.5 + 0.5;
+    ripple *= exp(-mouseDistance * 4.0) * uWaveIntensity;
+    
+    // Combine all effects smoothly
+    float pattern = fbmValue * 0.4 + vortex * 0.35 + turbulence * 0.25;
+    pattern += ripple * 0.3;
+    
+    // Smooth color blending with gradients
+    float colorMix = sin(pattern * PI * 2.0 + uTime * uSpeed * 0.4) * 0.5 + 0.5;
+    float colorMix2 = cos(pattern * PI + uTime * uSpeed * 0.3) * 0.5 + 0.5;
+    
+    // Blend three colors smoothly
+    vec3 color = mix(uColor1, uColor2, colorMix);
+    color = mix(color, uColor3, colorMix2);
+    
+    // Add subtle glow/bloom effect
+    color += vec3(0.1, 0.05, 0.15) * (fbmValue * 0.3 + vortex * 0.2);
+    
+    // Smoothness and saturation
+    color = mix(color, color * color, 0.2);
     
     gl_FragColor = vec4(color, 1.0);
   }
