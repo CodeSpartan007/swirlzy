@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
 const vertexShader = `
@@ -81,20 +80,26 @@ const fragmentShader = `
   }
 `;
 
-interface ShaderMaterialProps {
+interface ShaderCanvasProps {
+  isPaused: boolean;
   speed: number;
   waveIntensity: number;
   colorPalette: number;
 }
 
-const GenerativeShader = ({
+export default function ShaderCanvas({
+  isPaused,
   speed,
   waveIntensity,
   colorPalette,
-}: ShaderMaterialProps) => {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const materialRef = useRef<THREE.ShaderMaterial>(null);
-  const [mouse, setMouse] = useState({ x: 0.5, y: 0.5 });
+}: ShaderCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const mouseRef = useRef({ x: 0.5, y: 0.5 });
+  const clockRef = useRef(new THREE.Clock());
+  const animationIdRef = useRef<number | null>(null);
 
   const colorPalettes = [
     {
@@ -124,88 +129,130 @@ const GenerativeShader = ({
     },
   ];
 
-  const currentPalette = colorPalettes[colorPalette % colorPalettes.length];
-
-  useFrame((state) => {
-    if (materialRef.current) {
-      materialRef.current.uniforms.uTime.value = state.clock.getElapsedTime();
-      materialRef.current.uniforms.uMouse.value = new THREE.Vector2(
-        mouse.x,
-        mouse.y
-      );
-      materialRef.current.uniforms.uSpeed.value = speed;
-      materialRef.current.uniforms.uWaveIntensity.value = waveIntensity;
-      materialRef.current.uniforms.uColor1.value = currentPalette.color1;
-      materialRef.current.uniforms.uColor2.value = currentPalette.color2;
-      materialRef.current.uniforms.uColor3.value = currentPalette.color3;
-    }
-  });
-
   useEffect(() => {
+    if (!canvasRef.current) return;
+
+    // Initialize Three.js scene
+    const scene = new THREE.Scene();
+    sceneRef.current = scene;
+
+    const camera = new THREE.OrthographicCamera(
+      -1,
+      1,
+      1,
+      -1,
+      0.1,
+      1000
+    );
+    camera.position.z = 1;
+
+    const renderer = new THREE.WebGLRenderer({
+      canvas: canvasRef.current,
+      antialias: true,
+      alpha: false,
+      powerPreference: 'high-performance',
+    });
+    rendererRef.current = renderer;
+    renderer.setClearColor(0x000000);
+
+    const handleResize = () => {
+      if (!canvasRef.current) return;
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    // Create shader material
+    const uniforms = {
+      uTime: { value: 0 },
+      uMouse: { value: new THREE.Vector2(0.5, 0.5) },
+      uSpeed: { value: speed },
+      uWaveIntensity: { value: waveIntensity },
+      uColor1: { value: colorPalettes[0].color1 },
+      uColor2: { value: colorPalettes[0].color2 },
+      uColor3: { value: colorPalettes[0].color3 },
+    };
+
+    const material = new THREE.ShaderMaterial({
+      vertexShader,
+      fragmentShader,
+      uniforms,
+    });
+    materialRef.current = material;
+
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    // Animation loop
+    const animate = () => {
+      animationIdRef.current = requestAnimationFrame(animate);
+
+      const elapsed = isPaused ? 0 : clockRef.current.getElapsedTime();
+
+      if (material) {
+        material.uniforms.uTime.value = elapsed;
+        material.uniforms.uMouse.value.x = mouseRef.current.x;
+        material.uniforms.uMouse.value.y = mouseRef.current.y;
+        material.uniforms.uSpeed.value = speed;
+        material.uniforms.uWaveIntensity.value = waveIntensity;
+
+        const palette = colorPalettes[colorPalette % colorPalettes.length];
+        material.uniforms.uColor1.value = palette.color1;
+        material.uniforms.uColor2.value = palette.color2;
+        material.uniforms.uColor3.value = palette.color3;
+      }
+
+      renderer.render(scene, camera);
+    };
+
+    animate();
+
+    // Mouse tracking
     const handleMouseMove = (e: MouseEvent) => {
-      setMouse({
-        x: e.clientX / window.innerWidth,
-        y: 1 - e.clientY / window.innerHeight,
-      });
+      mouseRef.current.x = e.clientX / window.innerWidth;
+      mouseRef.current.y = 1 - e.clientY / window.innerHeight;
+    };
+
+    // Click ripple effect
+    const handleClick = () => {
+      if (materialRef.current) {
+        const currentIntensity = materialRef.current.uniforms.uWaveIntensity.value;
+        materialRef.current.uniforms.uWaveIntensity.value = currentIntensity + 0.5;
+        setTimeout(() => {
+          if (materialRef.current) {
+            materialRef.current.uniforms.uWaveIntensity.value = waveIntensity;
+          }
+        }, 300);
+      }
     };
 
     window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+    window.addEventListener('click', handleClick);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('click', handleClick);
+
+      if (animationIdRef.current) {
+        cancelAnimationFrame(animationIdRef.current);
+      }
+
+      geometry.dispose();
+      material.dispose();
+      renderer.dispose();
+    };
+  }, [isPaused, speed, waveIntensity, colorPalette]);
 
   return (
-    <mesh ref={meshRef}>
-      <planeGeometry args={[2, 2]} />
-      <shaderMaterial
-        ref={materialRef}
-        vertexShader={vertexShader}
-        fragmentShader={fragmentShader}
-        uniforms={{
-          uTime: { value: 0 },
-          uMouse: { value: new THREE.Vector2(0.5, 0.5) },
-          uSpeed: { value: speed },
-          uWaveIntensity: { value: waveIntensity },
-          uColor1: { value: currentPalette.color1 },
-          uColor2: { value: currentPalette.color2 },
-          uColor3: { value: currentPalette.color3 },
-        }}
-      />
-    </mesh>
-  );
-};
-
-interface GenerativeCanvasWrapperProps {
-  isPaused: boolean;
-  speed: number;
-  waveIntensity: number;
-  colorPalette: number;
-}
-
-export function GenerativeCanvasWrapper({
-  isPaused,
-  speed,
-  waveIntensity,
-  colorPalette,
-}: GenerativeCanvasWrapperProps) {
-  return (
-    <Canvas
-      gl={{
-        antialias: true,
-        powerPreference: 'high-performance',
-        failOnContextLoss: false,
-      }}
-      camera={{ position: [0, 0, 1], far: 1000 }}
-      onCreated={(state) => {
-        state.gl.setClearColor(0x000000);
-      }}
-    >
-      <GenerativeShader
-        speed={isPaused ? 0 : speed}
-        waveIntensity={waveIntensity}
-        colorPalette={colorPalette}
-      />
-    </Canvas>
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 w-full h-full block"
+    />
   );
 }
-
-export default GenerativeCanvasWrapper;

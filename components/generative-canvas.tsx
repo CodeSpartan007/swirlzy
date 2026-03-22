@@ -1,9 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, lazy, Suspense } from 'react';
-
-// Lazy-load the Three.js component to prevent server-side evaluation
-const GenerativeCanvasWrapper = lazy(() => import('@/components/generative-shader'));
+import { useEffect, useRef, useState } from 'react';
+import ShaderCanvas from '@/components/generative-shader';
 
 export default function GenerativeCanvas() {
   const [isPaused, setIsPaused] = useState(false);
@@ -102,14 +100,12 @@ export default function GenerativeCanvas() {
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-black">
-      <Suspense fallback={null}>
-        <GenerativeCanvasWrapper
-          isPaused={isPaused}
-          speed={speed}
-          waveIntensity={waveIntensity}
-          colorPalette={colorPalette}
-        />
-      </Suspense>
+      <ShaderCanvas
+        isPaused={isPaused}
+        speed={speed}
+        waveIntensity={waveIntensity}
+        colorPalette={colorPalette}
+      />
 
       {/* UI Overlay */}
       <div
