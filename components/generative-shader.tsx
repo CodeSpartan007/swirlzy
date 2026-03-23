@@ -21,6 +21,10 @@ const fragmentShader = `
   uniform vec3 uColor1;
   uniform vec3 uColor2;
   uniform vec3 uColor3;
+  uniform vec3 uColor4;
+  uniform vec3 uColor5;
+  uniform vec3 uColor6;
+  uniform float uPaletteBlend;
   uniform float uWaveIntensity;
   varying vec2 vUv;
   
@@ -226,28 +230,53 @@ const fragmentShader = `
     float colorMix3 = sin(colorFlow * PI * 0.5 + hueShift3) * 0.5 + 0.5;
     float colorMix4 = cos(colorFlow * PI * 1.5 + hueShift) * 0.5 + 0.5;
     
-    // Psychedelic color blending
+    // Dynamic color cycling - continuously shift through multiple palettes
+    float paletteTime = uTime * uSpeed * 0.1;
+    
+    // Create smooth color transitions through palette animation
+    float palette1 = sin(paletteTime) * 0.5 + 0.5;
+    float palette2 = sin(paletteTime + 2.094) * 0.5 + 0.5;
+    float palette3 = sin(paletteTime + 4.189) * 0.5 + 0.5;
+    
+    // Psychedelic color blending with 6 dynamic colors
     vec3 color = mix(uColor1, uColor2, colorMix1);
     color = mix(color, uColor3, colorMix2);
+    color = mix(color, uColor4, sin(colorFlow * PI + paletteTime) * 0.5 + 0.5);
+    color = mix(color, uColor5, cos(colorFlow * PI + paletteTime * 1.3) * 0.5 + 0.5);
+    color = mix(color, uColor6, sin(colorFlow * 0.5 * PI + paletteTime * 0.7) * 0.5 + 0.5);
+    
+    // Smooth palette interpolation based on time
+    float basePaletteInfluence = 0.35;
+    color = mix(color, mix(uColor1, uColor3, palette1), basePaletteInfluence * 0.3);
+    color = mix(color, mix(uColor2, uColor5, palette2), basePaletteInfluence * 0.25);
+    color = mix(color, mix(uColor4, uColor6, palette3), basePaletteInfluence * 0.2);
     
     // Add interference patterns for extra depth
-    float interference = sin(colorFlow * 10.0 + angle * 5.0) * 0.5 + 0.5;
-    interference *= cos(density * 8.0 + uTime * 2.0) * 0.5 + 0.5;
+    float interference = sin(colorFlow * 10.0 + angle * 5.0 + paletteTime) * 0.5 + 0.5;
+    interference *= cos(density * 8.0 + uTime * 2.0 + paletteTime * 0.5) * 0.5 + 0.5;
     
     // Blend with interference for psychedelic shimmer
-    color = mix(color, vec3(colorMix3, colorMix4, interference), 0.15);
+    color = mix(color, vec3(colorMix3, colorMix4, interference), 0.18);
+    
+    // Time-based hue shifting for constant color evolution
+    float hueEvolution = sin(uTime * uSpeed * 0.05) * 0.5 + 0.5;
+    vec3 hueShiftColor = mix(uColor1, uColor6, hueEvolution);
+    color = mix(color, hueShiftColor * color, 0.15);
     
     // Enhance brightness where flow is faster with glow effect
-    color += vec3(0.2, 0.15, 0.25) * speed * vortexStrength;
-    color += vec3(0.1, 0.2, 0.15) * density * interference;
+    float glowIntensity = speed * vortexStrength * (sin(uTime * 2.0) * 0.25 + 0.75);
+    color += vec3(0.2, 0.15, 0.25) * glowIntensity;
+    color += vec3(0.1, 0.2, 0.15) * density * interference * (cos(uTime * 1.5) * 0.3 + 0.7);
     
-    // Dynamic saturation boost based on multiple factors
+    // Dynamic saturation and contrast based on time-based pulsing
     vec3 saturated = color * color;
     float saturation = speed * 0.4 + density * 0.3 + interference * 0.3;
-    color = mix(color, saturated, saturation * 0.5);
+    float pulsing = sin(uTime * 1.5 + colorFlow * 3.0) * 0.25 + 0.75;
+    color = mix(color, saturated, saturation * pulsing * 0.5);
     
-    // Final psychedelic boost
-    color = pow(color, vec3(0.9, 1.0, 1.1));
+    // Contrast boost that pulses with animation
+    float contrastBoost = sin(uTime * 0.8 + density * 5.0) * 0.2 + 0.8;
+    color = pow(color, vec3(0.9 * contrastBoost, 1.0 * contrastBoost, 1.1 * contrastBoost));
     
     gl_FragColor = vec4(color, 1.0);
   }
@@ -278,31 +307,22 @@ export default function ShaderCanvas({
   const animationIdRef = useRef<number | null>(null);
 
   const colorPalettes = [
-    {
-      color1: new THREE.Color(0xff6b9d),
-      color2: new THREE.Color(0xc06c84),
-      color3: new THREE.Color(0x6c5ce7),
-    },
-    {
-      color1: new THREE.Color(0x00d2d3),
-      color2: new THREE.Color(0x30cfd0),
-      color3: new THREE.Color(0x330867),
-    },
-    {
-      color1: new THREE.Color(0xa8edea),
-      color2: new THREE.Color(0xfed6e3),
-      color3: new THREE.Color(0xff9a56),
-    },
-    {
-      color1: new THREE.Color(0x667eea),
-      color2: new THREE.Color(0x764ba2),
-      color3: new THREE.Color(0xf093fb),
-    },
-    {
-      color1: new THREE.Color(0x4facfe),
-      color2: new THREE.Color(0x00f2fe),
-      color3: new THREE.Color(0xffa500),
-    },
+    // Neon Pink & Purple
+    { colors: [0xff006e, 0xfb5607, 0x8338ec, 0x3a86ff, 0xfb5607, 0xffbe0b] },
+    // Cosmic Blue & Magenta
+    { colors: [0x0a0e27, 0x15aabf, 0xd61355, 0xff006e, 0x8338ec, 0xffbe0b] },
+    // Sunset Orange & Pink
+    { colors: [0xff006e, 0xffa500, 0xff6b6b, 0xf72585, 0xffd60a, 0xfd7e14] },
+    // Cyan & Lime
+    { colors: [0x00d2d3, 0x00f2fe, 0x00ff88, 0x00ffff, 0x39ff14, 0x76ff03] },
+    // Deep Purple & Gold
+    { colors: [0x2d1b69, 0x663399, 0xffd60a, 0xff006e, 0xd946ef, 0x00d9ff] },
+    // Psychedelic Rainbow
+    { colors: [0xff0080, 0xff8c00, 0xffff00, 0x00ff00, 0x0080ff, 0xff0080] },
+    // Neon Green & Pink
+    { colors: [0x39ff14, 0xff1493, 0xffd60a, 0x00ffff, 0xff006e, 0x00ff88] },
+    // Thermal Magma
+    { colors: [0x000000, 0xff0000, 0xff6600, 0xffff00, 0xff00ff, 0x00ffff] },
   ];
 
   useEffect(() => {
@@ -342,7 +362,7 @@ export default function ShaderCanvas({
     handleResize();
     window.addEventListener('resize', handleResize);
 
-    // Create shader material
+    // Create shader material with dynamic color uniforms
     const uniforms = {
       uTime: { value: 0 },
       uMouse: { value: new THREE.Vector2(0.5, 0.5) },
@@ -350,9 +370,13 @@ export default function ShaderCanvas({
       uMouseForce: { value: 0 },
       uSpeed: { value: speed },
       uWaveIntensity: { value: waveIntensity },
-      uColor1: { value: colorPalettes[0].color1 },
-      uColor2: { value: colorPalettes[0].color2 },
-      uColor3: { value: colorPalettes[0].color3 },
+      uColor1: { value: new THREE.Color(0xff006e) },
+      uColor2: { value: new THREE.Color(0xfb5607) },
+      uColor3: { value: new THREE.Color(0x8338ec) },
+      uColor4: { value: new THREE.Color(0x3a86ff) },
+      uColor5: { value: new THREE.Color(0xfb5607) },
+      uColor6: { value: new THREE.Color(0xffbe0b) },
+      uPaletteBlend: { value: 0 },
     };
 
     const material = new THREE.ShaderMaterial({
@@ -385,10 +409,23 @@ export default function ShaderCanvas({
         material.uniforms.uSpeed.value = speed;
         material.uniforms.uWaveIntensity.value = waveIntensity;
 
-        const palette = colorPalettes[colorPalette % colorPalettes.length];
-        material.uniforms.uColor1.value = palette.color1;
-        material.uniforms.uColor2.value = palette.color2;
-        material.uniforms.uColor3.value = palette.color3;
+        // Dynamic palette cycling - continuously shift through color palettes
+        const currentPaletteIndex = Math.floor(elapsed * 0.15 + colorPalette) % colorPalettes.length;
+        const nextPaletteIndex = (currentPaletteIndex + 1) % colorPalettes.length;
+        const paletteBlend = (elapsed * 0.15 + colorPalette) % 1.0;
+        
+        const currentPalette = colorPalettes[currentPaletteIndex];
+        const nextPalette = colorPalettes[nextPaletteIndex];
+
+        // Smoothly interpolate between palette colors
+        for (let i = 0; i < 6; i++) {
+          const currentColor = new THREE.Color(currentPalette.colors[i]);
+          const nextColor = new THREE.Color(nextPalette.colors[i]);
+          const blended = new THREE.Color().lerpColors(currentColor, nextColor, paletteBlend);
+          material.uniforms[`uColor${i + 1}`].value = blended;
+        }
+
+        material.uniforms.uPaletteBlend.value = paletteBlend;
       }
 
       renderer.render(scene, camera);
