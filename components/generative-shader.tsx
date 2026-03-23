@@ -66,13 +66,13 @@ const fragmentShader = `
     for (int i = 0; i < 8; i++) {
       if (i >= octaves) break;
       
-      value += amplitude * snoise(pos * frequency + time * 0.15);
+      value += amplitude * snoise(pos * frequency + time * 0.05);
       maxValue += amplitude;
       
-      // Modulate frequency and phase for more complex patterns
+      // Modulate frequency and phase for more complex patterns (reduced for calm motion)
       frequency *= 2.345;
       amplitude *= 0.5;
-      pos *= 1.8 + sin(time * 0.2 + float(i)) * 0.3;
+      pos *= 1.8 + sin(time * 0.08 + float(i)) * 0.2;
     }
     
     return value / maxValue;
@@ -109,8 +109,8 @@ const fragmentShader = `
     float decay = exp(-r * r * 2.0);
     float circulation = strength * decay / (r + 0.1);
     
-    // Add time-based pulsing for dynamics
-    circulation *= (sin(uTime * 2.0 + angle * 3.0) * 0.3 + 0.7);
+    // Add time-based pulsing for dynamics (reduced frequency for calm motion)
+    circulation *= (sin(uTime * 0.6 + angle * 1.5) * 0.2 + 0.8);
     
     return tangent * circulation;
   }
@@ -147,23 +147,23 @@ const fragmentShader = `
   
   // Advect particles through flow field
   vec2 advectPosition(vec2 pos, float time) {
-    // Primary rotating flow from center
-    vec2 centerVortex = vortexFlow(pos, vec2(0.5, 0.5), 1.5, time);
+    // Primary rotating flow from center (reduced strength)
+    vec2 centerVortex = vortexFlow(pos, vec2(0.5, 0.5), 0.8, time);
     
-    // Mouse-driven vortex (interactive)
-    vec2 mouseVortex = vortexFlow(pos, uMouse, uWaveIntensity * 2.0, time);
+    // Mouse-driven vortex (reduced for soft interaction)
+    vec2 mouseVortex = vortexFlow(pos, uMouse, uWaveIntensity * 0.8, time);
     
-    // Momentum-driven liquid push from mouse movement (with inertia)
+    // Momentum-driven liquid push from mouse movement (reduced strength)
     vec2 inertiaFlow = mouseInertiaFlow(pos, uMouse, uMouseVelocity, uMouseForce);
     
-    // Curl noise for added turbulence
-    vec2 turbulence = curlFlow(pos * 3.0, time) * 0.5;
+    // Curl noise for added turbulence (reduced intensity)
+    vec2 turbulence = curlFlow(pos * 3.0, time) * 0.2;
     
-    // Combine flows: inertia adds immediate responsive push
-    vec2 flow = centerVortex * 0.5 + mouseVortex * 0.2 + inertiaFlow * 0.4 + turbulence * 0.1;
+    // Combine flows with reduced intensities (lava lamp feel)
+    vec2 flow = centerVortex * 0.6 + mouseVortex * 0.1 + inertiaFlow * 0.15 + turbulence * 0.05;
     
-    // Advect position along flow
-    return pos + flow * 0.02;
+    // Advect position along flow with reduced step size
+    return pos + flow * 0.008;
   }
   
   void main() {
@@ -175,9 +175,9 @@ const fragmentShader = `
     
     // Multi-layer FBM with larger scales to create organic background
     // Use lower initial frequencies and domain warping to eliminate grid-like patterns
-    float fbmDensity1 = fbm(warpedAdvected * 0.8, uTime * uSpeed * 0.6, 5);
-    float fbmDensity2 = fbm(warpedAdvected * 1.5 + uTime * 0.3, uTime * uSpeed * 0.7, 4);
-    float fbmDensity3 = fbm(warpedAdvected * 2.8 + uTime * 0.5, uTime * uSpeed * 0.8, 3);
+    float fbmDensity1 = fbm(warpedAdvected * 0.8, uTime * uSpeed * 0.2, 5);
+    float fbmDensity2 = fbm(warpedAdvected * 1.5 + uTime * 0.1, uTime * uSpeed * 0.25, 4);
+    float fbmDensity3 = fbm(warpedAdvected * 2.8 + uTime * 0.15, uTime * uSpeed * 0.3, 3);
     
     // Use smoother blending to avoid visible layer boundaries
     float density = fbmDensity1 * 0.5 + fbmDensity2 * 0.35 + fbmDensity3 * 0.15;
@@ -186,7 +186,7 @@ const fragmentShader = `
     density = sin(density * PI) * 0.5 + 0.5;
     
     // Blend with domain-warped secondary pass for additional smoothness
-    float densitySmooth = fbm(warpedAdvected * 0.4, uTime * uSpeed * 0.4, 3);
+    float densitySmooth = fbm(warpedAdvected * 0.4, uTime * uSpeed * 0.15, 3);
     density = mix(density, densitySmooth, 0.3);
     
     // Get velocity magnitude for color brightness
@@ -200,10 +200,10 @@ const fragmentShader = `
     float angle = atan(toCenter.y, toCenter.x);
     float radius = length(toCenter);
     
-    // Multi-layer spiral patterns with different frequencies
-    float spiral1 = sin(angle * 3.0 - radius * 6.0 - uTime * uSpeed * 1.5) * 0.5 + 0.5;
-    float spiral2 = sin(angle * 7.0 - radius * 12.0 - uTime * uSpeed * 2.3) * 0.5 + 0.5;
-    float spiral3 = sin(angle * 13.0 - radius * 20.0 - uTime * uSpeed * 3.1) * 0.5 + 0.5;
+    // Multi-layer spiral patterns with different frequencies (reduced rotation speed)
+    float spiral1 = sin(angle * 3.0 - radius * 6.0 - uTime * uSpeed * 0.3) * 0.5 + 0.5;
+    float spiral2 = sin(angle * 7.0 - radius * 12.0 - uTime * uSpeed * 0.5) * 0.5 + 0.5;
+    float spiral3 = sin(angle * 13.0 - radius * 20.0 - uTime * uSpeed * 0.7) * 0.5 + 0.5;
     
     // Vortex strength decreases toward edges
     float vortexStrength = exp(-radius * radius * 3.0);
@@ -230,8 +230,8 @@ const fragmentShader = `
     float colorMix3 = sin(colorFlow * PI * 0.5 + hueShift3) * 0.5 + 0.5;
     float colorMix4 = cos(colorFlow * PI * 1.5 + hueShift) * 0.5 + 0.5;
     
-    // Dynamic color cycling - continuously shift through multiple palettes
-    float paletteTime = uTime * uSpeed * 0.1;
+    // Dynamic color cycling - continuously shift through multiple palettes (reduced speed)
+    float paletteTime = uTime * uSpeed * 0.02;
     
     // Create smooth color transitions through palette animation
     float palette1 = sin(paletteTime) * 0.5 + 0.5;
@@ -258,24 +258,24 @@ const fragmentShader = `
     // Blend with interference for psychedelic shimmer
     color = mix(color, vec3(colorMix3, colorMix4, interference), 0.18);
     
-    // Time-based hue shifting for constant color evolution
-    float hueEvolution = sin(uTime * uSpeed * 0.05) * 0.5 + 0.5;
+    // Time-based hue shifting for constant color evolution (slower)
+    float hueEvolution = sin(uTime * uSpeed * 0.01) * 0.5 + 0.5;
     vec3 hueShiftColor = mix(uColor1, uColor6, hueEvolution);
     color = mix(color, hueShiftColor * color, 0.15);
     
-    // Enhance brightness where flow is faster with glow effect
-    float glowIntensity = speed * vortexStrength * (sin(uTime * 2.0) * 0.25 + 0.75);
+    // Enhance brightness where flow is faster with glow effect (gentle pulsing)
+    float glowIntensity = speed * vortexStrength * (sin(uTime * 0.5) * 0.25 + 0.75);
     color += vec3(0.2, 0.15, 0.25) * glowIntensity;
-    color += vec3(0.1, 0.2, 0.15) * density * interference * (cos(uTime * 1.5) * 0.3 + 0.7);
+    color += vec3(0.1, 0.2, 0.15) * density * interference * (cos(uTime * 0.4) * 0.3 + 0.7);
     
-    // Dynamic saturation and contrast based on time-based pulsing
+    // Dynamic saturation and contrast based on time-based pulsing (slower)
     vec3 saturated = color * color;
     float saturation = speed * 0.4 + density * 0.3 + interference * 0.3;
-    float pulsing = sin(uTime * 1.5 + colorFlow * 3.0) * 0.25 + 0.75;
+    float pulsing = sin(uTime * 0.3 + colorFlow * 1.5) * 0.25 + 0.75;
     color = mix(color, saturated, saturation * pulsing * 0.5);
     
-    // Contrast boost that pulses with animation
-    float contrastBoost = sin(uTime * 0.8 + density * 5.0) * 0.2 + 0.8;
+    // Contrast boost that pulses with animation (gentle pulsing)
+    float contrastBoost = sin(uTime * 0.2 + density * 2.0) * 0.2 + 0.8;
     color = pow(color, vec3(0.9 * contrastBoost, 1.0 * contrastBoost, 1.1 * contrastBoost));
     
     gl_FragColor = vec4(color, 1.0);
@@ -397,8 +397,8 @@ export default function ShaderCanvas({
       const elapsed = isPaused ? 0 : clockRef.current.getElapsedTime();
 
       if (material) {
-        // Apply inertial decay to mouse force (smooth falloff)
-        mouseForceRef.current *= 0.92; // Friction coefficient for smooth decay
+        // Apply inertial decay to mouse force (smooth falloff - slower decay for calm feel)
+        mouseForceRef.current *= 0.95; // Gentle friction coefficient for sustained motion
 
         material.uniforms.uTime.value = elapsed;
         material.uniforms.uMouse.value.x = mouseRef.current.x;
@@ -409,10 +409,10 @@ export default function ShaderCanvas({
         material.uniforms.uSpeed.value = speed;
         material.uniforms.uWaveIntensity.value = waveIntensity;
 
-        // Dynamic palette cycling - continuously shift through color palettes
-        const currentPaletteIndex = Math.floor(elapsed * 0.15 + colorPalette) % colorPalettes.length;
+        // Dynamic palette cycling - continuously shift through color palettes (very slowly)
+        const currentPaletteIndex = Math.floor(elapsed * 0.03 + colorPalette) % colorPalettes.length;
         const nextPaletteIndex = (currentPaletteIndex + 1) % colorPalettes.length;
-        const paletteBlend = (elapsed * 0.15 + colorPalette) % 1.0;
+        const paletteBlend = (elapsed * 0.03 + colorPalette) % 1.0;
         
         const currentPalette = colorPalettes[currentPaletteIndex];
         const nextPalette = colorPalettes[nextPaletteIndex];
@@ -447,8 +447,8 @@ export default function ShaderCanvas({
         mouseVelocityRef.current.x ** 2 + mouseVelocityRef.current.y ** 2
       );
 
-      // Apply force based on velocity (faster movement = more liquid push)
-      mouseForceRef.current = Math.min(velocityMagnitude * 3.0, 1.5);
+      // Apply force based on velocity (reduced for soft interaction)
+      mouseForceRef.current = Math.min(velocityMagnitude * 1.2, 0.6);
 
       // Update position
       mouseRef.current.x = newX;
