@@ -324,6 +324,8 @@ export default function ShaderCanvas({
   const previousMouseRef = useRef({ x: 0.5, y: 0.5 });
   const clockRef = useRef(new THREE.Clock());
   const animationIdRef = useRef<number | null>(null);
+  const frozenTimeRef = useRef<number | null>(null);
+  const wasPausedRef = useRef(false);
 
   const colorPalettes = [
     // Neon Pink & Purple
@@ -413,7 +415,26 @@ export default function ShaderCanvas({
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
 
-      const elapsed = isPaused ? 0 : clockRef.current.getElapsedTime();
+      let elapsed: number;
+      
+      if (isPaused) {
+        // Capture the current time when pause is first triggered
+        if (!wasPausedRef.current) {
+          frozenTimeRef.current = clockRef.current.getElapsedTime();
+          wasPausedRef.current = true;
+        }
+        // Use the frozen time while paused (zero visual changes)
+        elapsed = frozenTimeRef.current!;
+      } else {
+        // Resume animation from frozen time
+        if (wasPausedRef.current) {
+          // Calculate the offset to resume from frozen time
+          const currentTime = clockRef.current.getElapsedTime();
+          clockRef.current.start();
+          wasPausedRef.current = false;
+        }
+        elapsed = clockRef.current.getElapsedTime();
+      }
 
       if (material) {
         // Apply inertial decay to mouse force (smooth falloff - slower decay for calm feel)
