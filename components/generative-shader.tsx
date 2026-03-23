@@ -134,6 +134,13 @@ const fragmentShader = `
     return push;
   }
   
+  // Domain warping to distort and break up geometric patterns
+  vec2 domainWarp(vec2 pos, float time) {
+    vec2 warpA = vec2(fbm(pos * 0.5, time, 3), fbm(pos * 0.5 + 5.234, time, 3)) * 0.5;
+    vec2 warpB = vec2(fbm(pos + warpA, time * 0.8, 2), fbm(pos + warpA + 10.768, time * 0.8, 2)) * 0.3;
+    return pos + warpA + warpB;
+  }
+  
   // Advect particles through flow field
   vec2 advectPosition(vec2 pos, float time) {
     // Primary rotating flow from center
@@ -159,14 +166,24 @@ const fragmentShader = `
     vec2 uv = vUv;
     vec2 advected = advectPosition(uv, uTime * uSpeed);
     
-    // Multi-layer FBM sampling for deep complexity
-    float fbmDensity1 = fbm(advected * 2.0, uTime * uSpeed, 6);
-    float fbmDensity2 = fbm(advected * 4.0 + uTime * 0.5, uTime * uSpeed, 5);
-    float fbmDensity3 = fbm(advected * 8.0 - uTime * 0.3, uTime * uSpeed, 4);
-    float fbmDensity4 = fbm(advected * 16.0, uTime * uSpeed * 0.7, 3);
+    // Apply domain warping to break up geometric patterns
+    vec2 warpedAdvected = domainWarp(advected, uTime * uSpeed);
     
-    // Layer density with varying weights
-    float density = fbmDensity1 * 0.4 + fbmDensity2 * 0.3 + fbmDensity3 * 0.2 + fbmDensity4 * 0.1;
+    // Multi-layer FBM with larger scales to create organic background
+    // Use lower initial frequencies and domain warping to eliminate grid-like patterns
+    float fbmDensity1 = fbm(warpedAdvected * 0.8, uTime * uSpeed * 0.6, 5);
+    float fbmDensity2 = fbm(warpedAdvected * 1.5 + uTime * 0.3, uTime * uSpeed * 0.7, 4);
+    float fbmDensity3 = fbm(warpedAdvected * 2.8 + uTime * 0.5, uTime * uSpeed * 0.8, 3);
+    
+    // Use smoother blending to avoid visible layer boundaries
+    float density = fbmDensity1 * 0.5 + fbmDensity2 * 0.35 + fbmDensity3 * 0.15;
+    
+    // Apply additional smoothing via sin/cos to round out sharp transitions
+    density = sin(density * PI) * 0.5 + 0.5;
+    
+    // Blend with domain-warped secondary pass for additional smoothness
+    float densitySmooth = fbm(warpedAdvected * 0.4, uTime * uSpeed * 0.4, 3);
+    density = mix(density, densitySmooth, 0.3);
     
     // Get velocity magnitude for color brightness
     vec2 flowVel = advectPosition(uv, uTime * uSpeed) - uv;
