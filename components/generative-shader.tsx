@@ -281,6 +281,22 @@ const fragmentShader = `
     float contrastBoost = sin(masterTime * 0.2 + density * 2.0) * 0.2 + 0.8;
     color = pow(color, vec3(0.9 * contrastBoost, 1.0 * contrastBoost, 1.1 * contrastBoost));
     
+    // Subtle glow and softness pass for diffuse, dreamy effect
+    // Add bloom-like glow to brighten areas naturally
+    vec3 glowColor = color * color * 0.5;
+    color = mix(color, color + glowColor, 0.2);
+    
+    // Reduce overall sharpness with subtle desaturation and softening
+    vec3 desaturated = vec3(dot(color, vec3(0.299, 0.587, 0.114)));
+    color = mix(color, desaturated, 0.05);
+    
+    // Apply gentle tone mapping for a softer, more cinematic look
+    color = color / (color + vec3(0.8));
+    
+    // Add very subtle blur-like effect through noise floor (reduces visible edges)
+    float softness = 0.08;
+    color += softness * 0.15;
+    
     gl_FragColor = vec4(color, 1.0);
   }
 `;
