@@ -167,17 +167,20 @@ const fragmentShader = `
   }
   
   void main() {
+    // Master time variable - unified for all layers
+    float masterTime = uTime * uSpeed;
+    
     vec2 uv = vUv;
-    vec2 advected = advectPosition(uv, uTime * uSpeed);
+    vec2 advected = advectPosition(uv, masterTime);
     
     // Apply domain warping to break up geometric patterns
-    vec2 warpedAdvected = domainWarp(advected, uTime * uSpeed);
+    vec2 warpedAdvected = domainWarp(advected, masterTime);
     
     // Multi-layer FBM with larger scales to create organic background
     // Use lower initial frequencies and domain warping to eliminate grid-like patterns
-    float fbmDensity1 = fbm(warpedAdvected * 0.8, uTime * uSpeed * 0.2, 5);
-    float fbmDensity2 = fbm(warpedAdvected * 1.5 + uTime * 0.1, uTime * uSpeed * 0.25, 4);
-    float fbmDensity3 = fbm(warpedAdvected * 2.8 + uTime * 0.15, uTime * uSpeed * 0.3, 3);
+    float fbmDensity1 = fbm(warpedAdvected * 0.8, masterTime * 0.2, 5);
+    float fbmDensity2 = fbm(warpedAdvected * 1.5 + masterTime * 0.1, masterTime * 0.25, 4);
+    float fbmDensity3 = fbm(warpedAdvected * 2.8 + masterTime * 0.15, masterTime * 0.3, 3);
     
     // Use smoother blending to avoid visible layer boundaries
     float density = fbmDensity1 * 0.5 + fbmDensity2 * 0.35 + fbmDensity3 * 0.15;
@@ -186,7 +189,7 @@ const fragmentShader = `
     density = sin(density * PI) * 0.5 + 0.5;
     
     // Blend with domain-warped secondary pass for additional smoothness
-    float densitySmooth = fbm(warpedAdvected * 0.4, uTime * uSpeed * 0.15, 3);
+    float densitySmooth = fbm(warpedAdvected * 0.4, masterTime * 0.15, 3);
     density = mix(density, densitySmooth, 0.3);
     
     // Get velocity magnitude for color brightness
@@ -201,9 +204,9 @@ const fragmentShader = `
     float radius = length(toCenter);
     
     // Multi-layer spiral patterns with different frequencies (reduced rotation speed)
-    float spiral1 = sin(angle * 3.0 - radius * 6.0 - uTime * uSpeed * 0.3) * 0.5 + 0.5;
-    float spiral2 = sin(angle * 7.0 - radius * 12.0 - uTime * uSpeed * 0.5) * 0.5 + 0.5;
-    float spiral3 = sin(angle * 13.0 - radius * 20.0 - uTime * uSpeed * 0.7) * 0.5 + 0.5;
+    float spiral1 = sin(angle * 3.0 - radius * 6.0 - masterTime * 0.3) * 0.5 + 0.5;
+    float spiral2 = sin(angle * 7.0 - radius * 12.0 - masterTime * 0.5) * 0.5 + 0.5;
+    float spiral3 = sin(angle * 13.0 - radius * 20.0 - masterTime * 0.7) * 0.5 + 0.5;
     
     // Vortex strength decreases toward edges
     float vortexStrength = exp(-radius * radius * 3.0);
@@ -220,9 +223,9 @@ const fragmentShader = `
     float colorFlow = spiral * 0.4 + density * 0.35 + speed * 0.25;
     
     // Complex hue shifting with multiple time-dependent waves
-    float hueShift = angle * 0.159 + uTime * uSpeed * 0.15;
-    float hueShift2 = radius * 0.5 - uTime * uSpeed * 0.2;
-    float hueShift3 = (angle + radius) * 0.3 + uTime * uSpeed * 0.1;
+    float hueShift = angle * 0.159 + masterTime * 0.15;
+    float hueShift2 = radius * 0.5 - masterTime * 0.2;
+    float hueShift3 = (angle + radius) * 0.3 + masterTime * 0.1;
     
     // Multi-level color cycling
     float colorMix1 = sin(colorFlow * PI * 2.0 + hueShift) * 0.5 + 0.5;
@@ -231,7 +234,7 @@ const fragmentShader = `
     float colorMix4 = cos(colorFlow * PI * 1.5 + hueShift) * 0.5 + 0.5;
     
     // Dynamic color cycling - continuously shift through multiple palettes (reduced speed)
-    float paletteTime = uTime * uSpeed * 0.02;
+    float paletteTime = masterTime * 0.02;
     
     // Create smooth color transitions through palette animation
     float palette1 = sin(paletteTime) * 0.5 + 0.5;
@@ -253,29 +256,29 @@ const fragmentShader = `
     
     // Add interference patterns for extra depth
     float interference = sin(colorFlow * 10.0 + angle * 5.0 + paletteTime) * 0.5 + 0.5;
-    interference *= cos(density * 8.0 + uTime * 2.0 + paletteTime * 0.5) * 0.5 + 0.5;
+    interference *= cos(density * 8.0 + masterTime * 0.2 + paletteTime * 0.5) * 0.5 + 0.5;
     
     // Blend with interference for psychedelic shimmer
     color = mix(color, vec3(colorMix3, colorMix4, interference), 0.18);
     
     // Time-based hue shifting for constant color evolution (slower)
-    float hueEvolution = sin(uTime * uSpeed * 0.01) * 0.5 + 0.5;
+    float hueEvolution = sin(masterTime * 0.01) * 0.5 + 0.5;
     vec3 hueShiftColor = mix(uColor1, uColor6, hueEvolution);
     color = mix(color, hueShiftColor * color, 0.15);
     
     // Enhance brightness where flow is faster with glow effect (gentle pulsing)
-    float glowIntensity = speed * vortexStrength * (sin(uTime * 0.5) * 0.25 + 0.75);
+    float glowIntensity = speed * vortexStrength * (sin(masterTime * 0.5) * 0.25 + 0.75);
     color += vec3(0.2, 0.15, 0.25) * glowIntensity;
-    color += vec3(0.1, 0.2, 0.15) * density * interference * (cos(uTime * 0.4) * 0.3 + 0.7);
+    color += vec3(0.1, 0.2, 0.15) * density * interference * (cos(masterTime * 0.4) * 0.3 + 0.7);
     
     // Dynamic saturation and contrast based on time-based pulsing (slower)
     vec3 saturated = color * color;
     float saturation = speed * 0.4 + density * 0.3 + interference * 0.3;
-    float pulsing = sin(uTime * 0.3 + colorFlow * 1.5) * 0.25 + 0.75;
+    float pulsing = sin(masterTime * 0.3 + colorFlow * 1.5) * 0.25 + 0.75;
     color = mix(color, saturated, saturation * pulsing * 0.5);
     
     // Contrast boost that pulses with animation (gentle pulsing)
-    float contrastBoost = sin(uTime * 0.2 + density * 2.0) * 0.2 + 0.8;
+    float contrastBoost = sin(masterTime * 0.2 + density * 2.0) * 0.2 + 0.8;
     color = pow(color, vec3(0.9 * contrastBoost, 1.0 * contrastBoost, 1.1 * contrastBoost));
     
     gl_FragColor = vec4(color, 1.0);
