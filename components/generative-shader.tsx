@@ -328,22 +328,38 @@ export default function ShaderCanvas({
   const wasPausedRef = useRef(false);
 
   const colorPalettes = [
-    // Neon Pink & Purple
+    // 1. Neon Pink & Purple
     { colors: [0xff006e, 0xfb5607, 0x8338ec, 0x3a86ff, 0xfb5607, 0xffbe0b] },
-    // Cosmic Blue & Magenta
+    // 2. Cosmic Blue & Magenta
     { colors: [0x0a0e27, 0x15aabf, 0xd61355, 0xff006e, 0x8338ec, 0xffbe0b] },
-    // Sunset Orange & Pink
+    // 3. Sunset Orange & Pink
     { colors: [0xff006e, 0xffa500, 0xff6b6b, 0xf72585, 0xffd60a, 0xfd7e14] },
-    // Cyan & Lime
+    // 4. Cyan & Lime
     { colors: [0x00d2d3, 0x00f2fe, 0x00ff88, 0x00ffff, 0x39ff14, 0x76ff03] },
-    // Deep Purple & Gold
+    // 5. Deep Purple & Gold
     { colors: [0x2d1b69, 0x663399, 0xffd60a, 0xff006e, 0xd946ef, 0x00d9ff] },
-    // Psychedelic Rainbow
+    // 6. Psychedelic Rainbow
     { colors: [0xff0080, 0xff8c00, 0xffff00, 0x00ff00, 0x0080ff, 0xff0080] },
-    // Neon Green & Pink
+    // 7. Neon Green & Pink
     { colors: [0x39ff14, 0xff1493, 0xffd60a, 0x00ffff, 0xff006e, 0x00ff88] },
-    // Thermal Magma
+    // 8. Thermal Magma
     { colors: [0x000000, 0xff0000, 0xff6600, 0xffff00, 0xff00ff, 0x00ffff] },
+    // 9. Aurora Borealis (soft greens, blues, purples)
+    { colors: [0x1a472a, 0x2a8f6f, 0x5dd4d4, 0x7b68ee, 0x9370db, 0x87ceeb] },
+    // 10. Ocean Depths (deep blues, teals, dark greens)
+    { colors: [0x001f3f, 0x003d82, 0x0066cc, 0x00ccff, 0x00ffcc, 0x1a9b8e] },
+    // 11. Pastel Dream (soft, muted tones)
+    { colors: [0xffc0cb, 0xffe4e1, 0xf0e68c, 0xdda0dd, 0xb0e0e6, 0xf5deb3] },
+    // 12. Deep Space (dark purples, blues, blacks with neon accents)
+    { colors: [0x0a0015, 0x1a0033, 0x330066, 0x6600cc, 0x00ffff, 0xff00ff] },
+    // 13. Lava Flow (reds, oranges, yellows)
+    { colors: [0x330000, 0x660000, 0xff3300, 0xff6600, 0xff9900, 0xffcc00] },
+    // 14. Emerald Forest (greens, teals, earth tones)
+    { colors: [0x1a4d2e, 0x2d6a4f, 0x52b788, 0x74c69d, 0xb7e4c7, 0x95d5b2] },
+    // 15. Twilight (indigo, purple, pink, warm tones)
+    { colors: [0x2d1b4e, 0x4a235a, 0x8e44ad, 0xc0392b, 0xe74c3c, 0xf39c12] },
+    // 16. Minty Fresh (mint, cyan, light greens, whites)
+    { colors: [0x00ffa6, 0x00ff88, 0x7fffd4, 0x00ffff, 0x98ff98, 0xe0ffff] },
   ];
 
   useEffect(() => {
@@ -449,10 +465,11 @@ export default function ShaderCanvas({
         material.uniforms.uSpeed.value = speed;
         material.uniforms.uWaveIntensity.value = waveIntensity;
 
-        // Dynamic palette cycling - continuously shift through color palettes (very slowly)
-        const currentPaletteIndex = Math.floor(elapsed * 0.03 + colorPalette) % colorPalettes.length;
+        // Dynamic palette cycling - continuously shift through color palettes (extremely slowly for smooth transitions)
+        const cycleSpeed = 0.015; // Reduced from 0.03 for even smoother transitions
+        const currentPaletteIndex = Math.floor(elapsed * cycleSpeed + colorPalette) % colorPalettes.length;
         const nextPaletteIndex = (currentPaletteIndex + 1) % colorPalettes.length;
-        const paletteBlend = (elapsed * 0.03 + colorPalette) % 1.0;
+        const paletteBlend = (elapsed * cycleSpeed + colorPalette) % 1.0;
         
         const currentPalette = colorPalettes[currentPaletteIndex];
         const nextPalette = colorPalettes[nextPaletteIndex];
