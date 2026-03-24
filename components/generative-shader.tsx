@@ -168,59 +168,49 @@ const fragmentShader = `
     return pos + flow * 0.008;
   }
   
-  // Click explosion ripple effect - returns ripple intensity
-  float explosionRipple(vec2 pos, vec2 clickPos, float clickAge) {
-    // Only show ripple if click is recent (fade out over 1.5 seconds)
-    if (clickAge > 1.5) return 0.0;
+  // Black hole effect - small localized vortex that removes colors temporarily
+  float blackHoleEffect(vec2 pos, vec2 clickPos, float clickAge) {
+    // Only show effect if click is recent (fade out over 1.2 seconds)
+    if (clickAge > 1.2) return 0.0;
     
     float dist = distance(pos, clickPos);
     
-    // Ripple wave that expands outward
-    float waveRadius = clickAge * 0.8;
-    float waveWidth = 0.15;
-    float ripple = exp(-pow(dist - waveRadius, 2.0) / (waveWidth * waveWidth));
+    // Small radius of effect (0.15 units)
+    float effectRadius = 0.15;
     
-    // Add another expanding wave for more energy
-    float ripple2 = exp(-pow(dist - waveRadius * 0.6, 2.0) / ((waveWidth * 1.2) * (waveWidth * 1.2)));
+    // Smooth falloff from center - stronger effect closer to center
+    float falloff = smoothstep(effectRadius, 0.0, dist);
     
-    // Fade out effect
-    float fadeOut = 1.0 - (clickAge / 1.5);
+    // Fade out over time
+    float fadeOut = 1.0 - (clickAge / 1.2);
     
-    return (ripple + ripple2 * 0.6) * fadeOut;
+    return falloff * fadeOut;
   }
   
-  // Explosion color calculation - creates vibrant color burst
-  vec3 explosionColor(vec2 pos, vec2 clickPos, float clickAge) {
-    if (clickAge > 1.5) return vec3(0.0);
+  // Inward vortex distortion for black hole effect
+  vec2 blackHoleDistortion(vec2 pos, vec2 clickPos, float clickAge) {
+    if (clickAge > 1.2) return vec2(0.0);
     
-    float dist = distance(pos, clickPos);
+    vec2 delta = pos - clickPos;
+    float dist = length(delta);
     
-    // Create expanding rings of color
-    float ring1 = sin((dist - clickAge * 0.8) * 20.0) * 0.5 + 0.5;
-    float ring2 = sin((dist - clickAge * 0.6) * 15.0) * 0.5 + 0.5;
+    float effectRadius = 0.15;
+    float falloff = smoothstep(effectRadius, 0.0, dist);
     
-    // Hue shift based on distance from click
-    float hue = dist * 3.0 + clickAge * 2.0;
+    // Create inward swirl - pulls coordinates toward center
+    float angle = atan(delta.y, delta.x);
+    float swirl = clickAge * 15.0; // Spinning vortex
     
-    // Create rainbow-like explosion using sine waves
-    vec3 explosionRGB = vec3(
-      sin(hue) * 0.5 + 0.5,
-      sin(hue + 2.094) * 0.5 + 0.5,
-      sin(hue + 4.189) * 0.5 + 0.5
-    );
+    // Inward radial pull
+    vec2 distortion = -normalize(delta) * falloff * 0.05;
     
-    // Blend the rings for more dynamic color
-    float colorMix = ring1 * 0.6 + ring2 * 0.4;
+    // Add swirling motion
+    vec2 perpendicular = vec2(-delta.y, delta.x) / max(dist, 0.01);
+    distortion += perpendicular * sin(swirl) * falloff * 0.03;
     
-    // Add palette colors to the explosion for harmony
-    explosionRGB = mix(explosionRGB, uColor1, 0.2);
-    explosionRGB = mix(explosionRGB, uColor4, 0.2);
-    explosionRGB = mix(explosionRGB, uColor6, 0.15);
+    float fadeOut = 1.0 - (clickAge / 1.2);
     
-    // Fade out the color
-    float fadeOut = 1.0 - (clickAge / 1.5);
-    
-    return explosionRGB * colorMix * fadeOut;
+    return distortion * fadeOut;
   }
   
   // Radial distortion from click point
@@ -247,9 +237,9 @@ const fragmentShader = `
     // Calculate click effect age
     float clickAge = masterTime - uClickTime;
     
-    // Apply explosion distortion to position
-    vec2 explosionDist = explosionDistortion(advected, uClickPos, clickAge);
-    vec2 distortedAdvected = advected + explosionDist;
+    // Apply black hole distortion to position (inward vortex)
+    vec2 blackHoleDist = blackHoleDistortion(advected, uClickPos, clickAge);
+    vec2 distortedAdvected = advected + blackHoleDist;
     
     // Apply domain warping to break up geometric patterns
     vec2 warpedAdvected = domainWarp(distortedAdvected, masterTime);
@@ -375,17 +365,14 @@ const fragmentShader = `
     float softness = 0.08;
     color += softness * 0.15;
     
-    // Apply explosion ripple effect
-    float ripple = explosionRipple(advected, uClickPos, clickAge);
+    // Apply black hole effect - temporarily removes colors from a small area
+    float blackHole = blackHoleEffect(advected, uClickPos, clickAge);
     
-    // Get explosion color burst
-    vec3 expColor = explosionColor(advected, uClickPos, clickAge);
+    // Darken the affected area (remove colors)
+    color = mix(color, color * 0.2, blackHole * 0.8);
     
-    // Blend explosion colors with base color
-    color = mix(color, expColor, ripple * 0.9);
-    
-    // Add vibrant glow from the explosion
-    color += expColor * ripple * 0.6;
+    // Add subtle edge glow around the black hole
+    color += vec3(0.15, 0.1, 0.2) * blackHole * 0.3;
     
     gl_FragColor = vec4(color, 1.0);
   }
