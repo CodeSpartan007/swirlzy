@@ -142,6 +142,25 @@ const fragmentShader = `
     return push;
   }
   
+  // Position-based mouse distortion - visible liquid stirring effect
+  vec2 mousePositionDistortion(vec2 pos, vec2 mousePos) {
+    vec2 delta = pos - mousePos;
+    float dist = length(delta);
+    
+    // Strong falloff near cursor, smooth extension outward
+    float falloff = exp(-dist * dist * 4.0);
+    
+    // Create inward pull toward cursor (stirring effect)
+    vec2 inwardPull = -normalize(delta) * falloff * 0.12;
+    
+    // Add rotational swirl around cursor
+    float angle = atan(delta.y, delta.x);
+    vec2 tangential = vec2(-sin(angle), cos(angle));
+    vec2 swirl = tangential * falloff * 0.08;
+    
+    return (inwardPull + swirl);
+  }
+  
   // Domain warping to distort and break up geometric patterns
   vec2 domainWarp(vec2 pos, float time) {
     vec2 warpA = vec2(fbm(pos * 0.5, time, 3), fbm(pos * 0.5 + 5.234, time, 3)) * 0.5;
@@ -154,17 +173,20 @@ const fragmentShader = `
     // Primary rotating flow from center (reduced strength)
     vec2 centerVortex = vortexFlow(pos, vec2(0.5, 0.5), 0.8, time);
     
-    // Mouse-driven vortex (reduced for soft interaction)
-    vec2 mouseVortex = vortexFlow(pos, uMouse, uWaveIntensity * 0.8, time);
+    // Mouse-driven vortex (increased for more visible interaction)
+    vec2 mouseVortex = vortexFlow(pos, uMouse, uWaveIntensity * 1.2, time);
     
-    // Momentum-driven liquid push from mouse movement (reduced strength)
+    // Momentum-driven liquid push from mouse movement
     vec2 inertiaFlow = mouseInertiaFlow(pos, uMouse, uMouseVelocity, uMouseForce);
+    
+    // Position-based mouse distortion for visible stirring effect
+    vec2 mouseDistortion = mousePositionDistortion(pos, uMouse);
     
     // Curl noise for added turbulence (reduced intensity)
     vec2 turbulence = curlFlow(pos * 3.0, time) * 0.2;
     
-    // Combine flows with reduced intensities (lava lamp feel)
-    vec2 flow = centerVortex * 0.6 + mouseVortex * 0.1 + inertiaFlow * 0.15 + turbulence * 0.05;
+    // Combine flows: increased mouse influence for clearer effect
+    vec2 flow = centerVortex * 0.5 + mouseVortex * 0.25 + inertiaFlow * 0.2 + mouseDistortion * 0.35 + turbulence * 0.05;
     
     // Advect position along flow with reduced step size
     return pos + flow * 0.008;
@@ -401,6 +423,7 @@ export default function ShaderCanvas({
   const mouseVelocityRef = useRef({ x: 0, y: 0 });
   const mouseForceRef = useRef(0);
   const previousMouseRef = useRef({ x: 0.5, y: 0.5 });
+  const smoothMouseRef = useRef({ x: 0.5, y: 0.5 });
   const clockRef = useRef(new THREE.Clock());
   const realClockRef = useRef(new THREE.Clock());
   const animationIdRef = useRef<number | null>(null);
@@ -540,13 +563,18 @@ export default function ShaderCanvas({
         // Apply inertial decay to mouse force (smooth falloff - slower decay for calm feel)
         mouseForceRef.current *= 0.95; // Gentle friction coefficient for sustained motion
 
+        // Apply smooth inertia to mouse position for lingering distortion effect
+        const mouseInertia = 0.92; // Smooth decay - distortion lingers after movement
+        smoothMouseRef.current.x += (mouseRef.current.x - smoothMouseRef.current.x) * (1 - mouseInertia);
+        smoothMouseRef.current.y += (mouseRef.current.y - smoothMouseRef.current.y) * (1 - mouseInertia);
+
         // Get real elapsed time (independent of speed)
         const realElapsed = realClockRef.current.getElapsedTime();
 
         material.uniforms.uTime.value = elapsed;
         material.uniforms.uRealElapsedTime.value = realElapsed;
-        material.uniforms.uMouse.value.x = mouseRef.current.x;
-        material.uniforms.uMouse.value.y = mouseRef.current.y;
+        material.uniforms.uMouse.value.x = smoothMouseRef.current.x;
+        material.uniforms.uMouse.value.y = smoothMouseRef.current.y;
         material.uniforms.uMouseVelocity.value.x = mouseVelocityRef.current.x;
         material.uniforms.uMouseVelocity.value.y = mouseVelocityRef.current.y;
         material.uniforms.uMouseForce.value = mouseForceRef.current;
