@@ -14,11 +14,13 @@ const vertexShader = `
 
 const fragmentShader = `
   uniform float uTime;
+  uniform float uRealElapsedTime;
   uniform vec2 uMouse;
   uniform vec2 uMouseVelocity;
   uniform float uMouseForce;
   uniform vec2 uClickPos;
   uniform float uClickTime;
+  uniform float uRealClickTime;
   uniform float uSpeed;
   uniform vec3 uColor1;
   uniform vec3 uColor2;
@@ -169,37 +171,37 @@ const fragmentShader = `
   }
   
   // Black hole effect - small localized vortex that removes colors temporarily
-  float blackHoleEffect(vec2 pos, vec2 clickPos, float clickAge) {
-    // Only show effect if click is recent (fade out over 1.2 seconds)
-    if (clickAge > 1.2) return 0.0;
+  float blackHoleEffect(vec2 pos, vec2 clickPos, float realClickAge) {
+    // Only show effect if click is recent (fade out over 0.8 real seconds, max 10 seconds at lowest speed)
+    if (realClickAge > 0.8) return 0.0;
     
     float dist = distance(pos, clickPos);
     
-    // Small radius of effect (0.15 units)
-    float effectRadius = 0.15;
+    // Small radius of effect (0.12 units) - consistent size
+    float effectRadius = 0.12;
     
     // Smooth falloff from center - stronger effect closer to center
     float falloff = smoothstep(effectRadius, 0.0, dist);
     
-    // Fade out over time
-    float fadeOut = 1.0 - (clickAge / 1.2);
+    // Fade out over real time (not animation speed)
+    float fadeOut = 1.0 - (realClickAge / 0.8);
     
     return falloff * fadeOut;
   }
   
   // Inward vortex distortion for black hole effect
-  vec2 blackHoleDistortion(vec2 pos, vec2 clickPos, float clickAge) {
-    if (clickAge > 1.2) return vec2(0.0);
+  vec2 blackHoleDistortion(vec2 pos, vec2 clickPos, float realClickAge) {
+    if (realClickAge > 0.8) return vec2(0.0);
     
     vec2 delta = pos - clickPos;
     float dist = length(delta);
     
-    float effectRadius = 0.15;
+    float effectRadius = 0.12;
     float falloff = smoothstep(effectRadius, 0.0, dist);
     
     // Create inward swirl - pulls coordinates toward center
     float angle = atan(delta.y, delta.x);
-    float swirl = clickAge * 15.0; // Spinning vortex
+    float swirl = realClickAge * 20.0; // Spinning vortex (based on real time)
     
     // Inward radial pull
     vec2 distortion = -normalize(delta) * falloff * 0.05;
@@ -208,7 +210,7 @@ const fragmentShader = `
     vec2 perpendicular = vec2(-delta.y, delta.x) / max(dist, 0.01);
     distortion += perpendicular * sin(swirl) * falloff * 0.03;
     
-    float fadeOut = 1.0 - (clickAge / 1.2);
+    float fadeOut = 1.0 - (realClickAge / 0.8);
     
     return distortion * fadeOut;
   }
@@ -234,11 +236,11 @@ const fragmentShader = `
     vec2 uv = vUv;
     vec2 advected = advectPosition(uv, masterTime);
     
-    // Calculate click effect age
-    float clickAge = masterTime - uClickTime;
+    // Calculate click effect age using real elapsed time (independent of speed)
+    float realClickAge = uRealElapsedTime - uRealClickTime;
     
     // Apply black hole distortion to position (inward vortex)
-    vec2 blackHoleDist = blackHoleDistortion(advected, uClickPos, clickAge);
+    vec2 blackHoleDist = blackHoleDistortion(advected, uClickPos, realClickAge);
     vec2 distortedAdvected = advected + blackHoleDist;
     
     // Apply domain warping to break up geometric patterns
@@ -366,7 +368,7 @@ const fragmentShader = `
     color += softness * 0.15;
     
     // Apply black hole effect - temporarily removes colors from a small area
-    float blackHole = blackHoleEffect(advected, uClickPos, clickAge);
+    float blackHole = blackHoleEffect(advected, uClickPos, realClickAge);
     
     // Darken the affected area (remove colors)
     color = mix(color, color * 0.2, blackHole * 0.8);
@@ -400,6 +402,7 @@ export default function ShaderCanvas({
   const mouseForceRef = useRef(0);
   const previousMouseRef = useRef({ x: 0.5, y: 0.5 });
   const clockRef = useRef(new THREE.Clock());
+  const realClockRef = useRef(new THREE.Clock());
   const animationIdRef = useRef<number | null>(null);
   const frozenTimeRef = useRef<number | null>(null);
   const wasPausedRef = useRef(false);
@@ -479,11 +482,13 @@ export default function ShaderCanvas({
     // Create shader material with dynamic color uniforms
     const uniforms = {
       uTime: { value: 0 },
+      uRealElapsedTime: { value: 0 },
       uMouse: { value: new THREE.Vector2(0.5, 0.5) },
       uMouseVelocity: { value: new THREE.Vector2(0, 0) },
       uMouseForce: { value: 0 },
       uClickPos: { value: new THREE.Vector2(0.5, 0.5) },
       uClickTime: { value: -10 },
+      uRealClickTime: { value: -10 },
       uSpeed: { value: speed },
       uWaveIntensity: { value: waveIntensity },
       uColor1: { value: new THREE.Color(0xff006e) },
@@ -535,7 +540,11 @@ export default function ShaderCanvas({
         // Apply inertial decay to mouse force (smooth falloff - slower decay for calm feel)
         mouseForceRef.current *= 0.95; // Gentle friction coefficient for sustained motion
 
+        // Get real elapsed time (independent of speed)
+        const realElapsed = realClockRef.current.getElapsedTime();
+
         material.uniforms.uTime.value = elapsed;
+        material.uniforms.uRealElapsedTime.value = realElapsed;
         material.uniforms.uMouse.value.x = mouseRef.current.x;
         material.uniforms.uMouse.value.y = mouseRef.current.y;
         material.uniforms.uMouseVelocity.value.x = mouseVelocityRef.current.x;
@@ -593,14 +602,15 @@ export default function ShaderCanvas({
 
     // Click explosion ripple effect
     const handleClick = (e: MouseEvent) => {
-      if (materialRef.current && clockRef.current) {
+      if (materialRef.current) {
         // Calculate normalized click position
         const clickX = e.clientX / window.innerWidth;
         const clickY = 1 - e.clientY / window.innerHeight;
         
-        // Set click position and time in shader
+        // Set click position and time in shader (using real time)
         materialRef.current.uniforms.uClickPos.value = new THREE.Vector2(clickX, clickY);
         materialRef.current.uniforms.uClickTime.value = clockRef.current.getElapsedTime();
+        materialRef.current.uniforms.uRealClickTime.value = realClockRef.current.getElapsedTime();
       }
     };
 
