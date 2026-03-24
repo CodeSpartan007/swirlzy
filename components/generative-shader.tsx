@@ -168,7 +168,7 @@ const fragmentShader = `
     return pos + flow * 0.008;
   }
   
-  // Click explosion ripple effect
+  // Click explosion ripple effect - returns ripple intensity
   float explosionRipple(vec2 pos, vec2 clickPos, float clickAge) {
     // Only show ripple if click is recent (fade out over 1.5 seconds)
     if (clickAge > 1.5) return 0.0;
@@ -187,6 +187,40 @@ const fragmentShader = `
     float fadeOut = 1.0 - (clickAge / 1.5);
     
     return (ripple + ripple2 * 0.6) * fadeOut;
+  }
+  
+  // Explosion color calculation - creates vibrant color burst
+  vec3 explosionColor(vec2 pos, vec2 clickPos, float clickAge) {
+    if (clickAge > 1.5) return vec3(0.0);
+    
+    float dist = distance(pos, clickPos);
+    
+    // Create expanding rings of color
+    float ring1 = sin((dist - clickAge * 0.8) * 20.0) * 0.5 + 0.5;
+    float ring2 = sin((dist - clickAge * 0.6) * 15.0) * 0.5 + 0.5;
+    
+    // Hue shift based on distance from click
+    float hue = dist * 3.0 + clickAge * 2.0;
+    
+    // Create rainbow-like explosion using sine waves
+    vec3 explosionRGB = vec3(
+      sin(hue) * 0.5 + 0.5,
+      sin(hue + 2.094) * 0.5 + 0.5,
+      sin(hue + 4.189) * 0.5 + 0.5
+    );
+    
+    // Blend the rings for more dynamic color
+    float colorMix = ring1 * 0.6 + ring2 * 0.4;
+    
+    // Add palette colors to the explosion for harmony
+    explosionRGB = mix(explosionRGB, uColor1, 0.2);
+    explosionRGB = mix(explosionRGB, uColor4, 0.2);
+    explosionRGB = mix(explosionRGB, uColor6, 0.15);
+    
+    // Fade out the color
+    float fadeOut = 1.0 - (clickAge / 1.5);
+    
+    return explosionRGB * colorMix * fadeOut;
   }
   
   // Radial distortion from click point
@@ -344,12 +378,14 @@ const fragmentShader = `
     // Apply explosion ripple effect
     float ripple = explosionRipple(advected, uClickPos, clickAge);
     
-    // Brighten colors along the ripple wave
-    vec3 rippleColor = color + vec3(0.3, 0.4, 0.5) * ripple;
-    color = mix(color, rippleColor, ripple * 0.8);
+    // Get explosion color burst
+    vec3 expColor = explosionColor(advected, uClickPos, clickAge);
     
-    // Add subtle outward displacement glow
-    color += vec3(0.2, 0.25, 0.3) * ripple * 0.4;
+    // Blend explosion colors with base color
+    color = mix(color, expColor, ripple * 0.9);
+    
+    // Add vibrant glow from the explosion
+    color += expColor * ripple * 0.6;
     
     gl_FragColor = vec4(color, 1.0);
   }
