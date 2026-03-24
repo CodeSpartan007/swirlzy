@@ -17,6 +17,8 @@ const fragmentShader = `
   uniform vec2 uMouse;
   uniform vec2 uMouseVelocity;
   uniform float uMouseForce;
+  uniform vec2 uClickPos;
+  uniform float uClickTime;
   uniform float uSpeed;
   uniform vec3 uColor1;
   uniform vec3 uColor2;
@@ -166,6 +168,41 @@ const fragmentShader = `
     return pos + flow * 0.008;
   }
   
+  // Click explosion ripple effect
+  float explosionRipple(vec2 pos, vec2 clickPos, float clickAge) {
+    // Only show ripple if click is recent (fade out over 1.5 seconds)
+    if (clickAge > 1.5) return 0.0;
+    
+    float dist = distance(pos, clickPos);
+    
+    // Ripple wave that expands outward
+    float waveRadius = clickAge * 0.8;
+    float waveWidth = 0.15;
+    float ripple = exp(-pow(dist - waveRadius, 2.0) / (waveWidth * waveWidth));
+    
+    // Add another expanding wave for more energy
+    float ripple2 = exp(-pow(dist - waveRadius * 0.6, 2.0) / ((waveWidth * 1.2) * (waveWidth * 1.2)));
+    
+    // Fade out effect
+    float fadeOut = 1.0 - (clickAge / 1.5);
+    
+    return (ripple + ripple2 * 0.6) * fadeOut;
+  }
+  
+  // Radial distortion from click point
+  vec2 explosionDistortion(vec2 pos, vec2 clickPos, float clickAge) {
+    if (clickAge > 1.5) return vec2(0.0);
+    
+    vec2 delta = pos - clickPos;
+    float dist = length(delta);
+    
+    // Push outward from click center
+    float pushStrength = sin(max(0.0, 0.8 - dist) * PI) * (1.0 - clickAge / 1.5);
+    vec2 push = normalize(delta + vec2(0.001)) * pushStrength * 0.08;
+    
+    return push;
+  }
+  
   void main() {
     // Master time variable - unified for all layers
     float masterTime = uTime * uSpeed;
@@ -173,8 +210,15 @@ const fragmentShader = `
     vec2 uv = vUv;
     vec2 advected = advectPosition(uv, masterTime);
     
+    // Calculate click effect age
+    float clickAge = masterTime - uClickTime;
+    
+    // Apply explosion distortion to position
+    vec2 explosionDist = explosionDistortion(advected, uClickPos, clickAge);
+    vec2 distortedAdvected = advected + explosionDist;
+    
     // Apply domain warping to break up geometric patterns
-    vec2 warpedAdvected = domainWarp(advected, masterTime);
+    vec2 warpedAdvected = domainWarp(distortedAdvected, masterTime);
     
     // Multi-layer FBM with larger scales to create organic background
     // Use lower initial frequencies and domain warping to eliminate grid-like patterns
@@ -297,6 +341,16 @@ const fragmentShader = `
     float softness = 0.08;
     color += softness * 0.15;
     
+    // Apply explosion ripple effect
+    float ripple = explosionRipple(advected, uClickPos, clickAge);
+    
+    // Brighten colors along the ripple wave
+    vec3 rippleColor = color + vec3(0.3, 0.4, 0.5) * ripple;
+    color = mix(color, rippleColor, ripple * 0.8);
+    
+    // Add subtle outward displacement glow
+    color += vec3(0.2, 0.25, 0.3) * ripple * 0.4;
+    
     gl_FragColor = vec4(color, 1.0);
   }
 `;
@@ -405,6 +459,8 @@ export default function ShaderCanvas({
       uMouse: { value: new THREE.Vector2(0.5, 0.5) },
       uMouseVelocity: { value: new THREE.Vector2(0, 0) },
       uMouseForce: { value: 0 },
+      uClickPos: { value: new THREE.Vector2(0.5, 0.5) },
+      uClickTime: { value: -10 },
       uSpeed: { value: speed },
       uWaveIntensity: { value: waveIntensity },
       uColor1: { value: new THREE.Color(0xff006e) },
@@ -512,16 +568,16 @@ export default function ShaderCanvas({
       mouseRef.current.y = newY;
     };
 
-    // Click ripple effect
-    const handleClick = () => {
-      if (materialRef.current) {
-        const currentIntensity = materialRef.current.uniforms.uWaveIntensity.value;
-        materialRef.current.uniforms.uWaveIntensity.value = currentIntensity + 0.5;
-        setTimeout(() => {
-          if (materialRef.current) {
-            materialRef.current.uniforms.uWaveIntensity.value = waveIntensity;
-          }
-        }, 300);
+    // Click explosion ripple effect
+    const handleClick = (e: MouseEvent) => {
+      if (materialRef.current && clockRef.current) {
+        // Calculate normalized click position
+        const clickX = e.clientX / window.innerWidth;
+        const clickY = 1 - e.clientY / window.innerHeight;
+        
+        // Set click position and time in shader
+        materialRef.current.uniforms.uClickPos.value = new THREE.Vector2(clickX, clickY);
+        materialRef.current.uniforms.uClickTime.value = clockRef.current.getElapsedTime();
       }
     };
 
