@@ -172,8 +172,8 @@ const fragmentShader = `
   
   // Black hole effect - small localized vortex that removes colors temporarily
   float blackHoleEffect(vec2 pos, vec2 clickPos, float realClickAge) {
-    // Only show effect if click is recent (fade out over 1.6 real seconds)
-    if (realClickAge > 1.6) return 0.0;
+    // Only show effect if click is recent (fade out over 3.2 real seconds)
+    if (realClickAge > 3.2) return 0.0;
     
     float dist = distance(pos, clickPos);
     
@@ -184,14 +184,14 @@ const fragmentShader = `
     float falloff = smoothstep(effectRadius, 0.0, dist);
     
     // Fade out over real time (not animation speed)
-    float fadeOut = 1.0 - (realClickAge / 1.6);
+    float fadeOut = 1.0 - (realClickAge / 3.2);
     
     return falloff * fadeOut;
   }
   
   // Inward vortex distortion for black hole effect
   vec2 blackHoleDistortion(vec2 pos, vec2 clickPos, float realClickAge) {
-    if (realClickAge > 1.6) return vec2(0.0);
+    if (realClickAge > 3.2) return vec2(0.0);
     
     vec2 delta = pos - clickPos;
     float dist = length(delta);
@@ -210,7 +210,7 @@ const fragmentShader = `
     vec2 perpendicular = vec2(-delta.y, delta.x) / max(dist, 0.01);
     distortion += perpendicular * sin(swirl) * falloff * 0.03;
     
-    float fadeOut = 1.0 - (realClickAge / 1.6);
+    float fadeOut = 1.0 - (realClickAge / 3.2);
     
     return distortion * fadeOut;
   }
