@@ -22,7 +22,6 @@ const fragmentShader = `
   uniform float uClickTime;
   uniform float uRealClickTime;
   uniform float uSpeed;
-  uniform float uBlackHoleSize;
   uniform vec3 uColor1;
   uniform vec3 uColor2;
   uniform vec3 uColor3;
@@ -200,8 +199,8 @@ const fragmentShader = `
     
     float dist = distance(pos, clickPos);
     
-    // Radius of effect - controlled by uniform (default 0.24)
-    float effectRadius = 0.24 * uBlackHoleSize;
+    // Radius of effect (0.24 units) - doubled size
+    float effectRadius = 0.24;
     
     // Smooth falloff from center - stronger effect closer to center
     float falloff = smoothstep(effectRadius, 0.0, dist);
@@ -219,7 +218,7 @@ const fragmentShader = `
     vec2 delta = pos - clickPos;
     float dist = length(delta);
     
-    float effectRadius = 0.24 * uBlackHoleSize;
+    float effectRadius = 0.24;
     float falloff = smoothstep(effectRadius, 0.0, dist);
     
     // Create inward swirl - pulls coordinates toward center
@@ -408,7 +407,6 @@ interface ShaderCanvasProps {
   speed: number;
   waveIntensity: number;
   colorPalette: number;
-  blackHoleSize: number;
 }
 
 export default function ShaderCanvas({
@@ -416,7 +414,6 @@ export default function ShaderCanvas({
   speed,
   waveIntensity,
   colorPalette,
-  blackHoleSize,
 }: ShaderCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -515,7 +512,6 @@ export default function ShaderCanvas({
       uClickPos: { value: new THREE.Vector2(0.5, 0.5) },
       uClickTime: { value: -10 },
       uRealClickTime: { value: -10 },
-      uBlackHoleSize: { value: 1 },
       uSpeed: { value: speed },
       uWaveIntensity: { value: waveIntensity },
       uColor1: { value: new THREE.Color(0xff006e) },
@@ -563,7 +559,7 @@ export default function ShaderCanvas({
         elapsed = clockRef.current.getElapsedTime();
       }
 
-      if (materialRef.current) {
+      if (material) {
         // Apply inertial decay to mouse force (smooth falloff - slower decay for calm feel)
         mouseForceRef.current *= 0.95; // Gentle friction coefficient for sustained motion
 
@@ -575,16 +571,15 @@ export default function ShaderCanvas({
         // Get real elapsed time (independent of speed)
         const realElapsed = realClockRef.current.getElapsedTime();
 
-        materialRef.current.uniforms.uTime.value = elapsed;
-        materialRef.current.uniforms.uRealElapsedTime.value = realElapsed;
-        materialRef.current.uniforms.uMouse.value.x = smoothMouseRef.current.x;
-        materialRef.current.uniforms.uMouse.value.y = smoothMouseRef.current.y;
-        materialRef.current.uniforms.uMouseVelocity.value.x = mouseVelocityRef.current.x;
-        materialRef.current.uniforms.uMouseVelocity.value.y = mouseVelocityRef.current.y;
-        materialRef.current.uniforms.uMouseForce.value = mouseForceRef.current;
-        materialRef.current.uniforms.uSpeed.value = speed;
-        materialRef.current.uniforms.uWaveIntensity.value = waveIntensity;
-        materialRef.current.uniforms.uBlackHoleSize.value = blackHoleSize;
+        material.uniforms.uTime.value = elapsed;
+        material.uniforms.uRealElapsedTime.value = realElapsed;
+        material.uniforms.uMouse.value.x = smoothMouseRef.current.x;
+        material.uniforms.uMouse.value.y = smoothMouseRef.current.y;
+        material.uniforms.uMouseVelocity.value.x = mouseVelocityRef.current.x;
+        material.uniforms.uMouseVelocity.value.y = mouseVelocityRef.current.y;
+        material.uniforms.uMouseForce.value = mouseForceRef.current;
+        material.uniforms.uSpeed.value = speed;
+        material.uniforms.uWaveIntensity.value = waveIntensity;
 
         // Dynamic palette cycling - continuously shift through color palettes (extremely slowly for smooth transitions)
         const cycleSpeed = 0.015; // Reduced from 0.03 for even smoother transitions
@@ -600,10 +595,10 @@ export default function ShaderCanvas({
           const currentColor = new THREE.Color(currentPalette.colors[i]);
           const nextColor = new THREE.Color(nextPalette.colors[i]);
           const blended = new THREE.Color().lerpColors(currentColor, nextColor, paletteBlend);
-          materialRef.current.uniforms[`uColor${i + 1}`].value = blended;
+          material.uniforms[`uColor${i + 1}`].value = blended;
         }
 
-        materialRef.current.uniforms.uPaletteBlend.value = paletteBlend;
+        material.uniforms.uPaletteBlend.value = paletteBlend;
       }
 
       renderer.render(scene, camera);

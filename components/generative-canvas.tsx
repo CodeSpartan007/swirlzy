@@ -8,7 +8,6 @@ export default function GenerativeCanvas() {
   const [speed, setSpeed] = useState(1);
   const [waveIntensity, setWaveIntensity] = useState(1);
   const [colorPalette, setColorPalette] = useState(0);
-  const [blackHoleSize, setBlackHoleSize] = useState(1);
   const [showUI, setShowUI] = useState(true);
   const [hasWebGL, setHasWebGL] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
@@ -106,7 +105,6 @@ export default function GenerativeCanvas() {
         speed={speed}
         waveIntensity={waveIntensity}
         colorPalette={colorPalette}
-        blackHoleSize={blackHoleSize}
       />
 
       {/* UI Overlay */}
@@ -137,27 +135,11 @@ export default function GenerativeCanvas() {
           >
             ✨ R: Randomize
           </button>
-          <div className="text-gray-400 px-2 pt-2 border-t border-white/10 space-y-2">
+          <div className="text-gray-400 px-2 pt-2 border-t border-white/10">
             <div>Speed: {speed.toFixed(2)}x</div>
             <div>Wave: {waveIntensity.toFixed(2)}</div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs whitespace-nowrap">BH Size:</span>
-              <input
-                type="range"
-                min="0.2"
-                max="3"
-                step="0.1"
-                value={blackHoleSize}
-                onChange={(e) => setBlackHoleSize(parseFloat(e.target.value))}
-                className="w-20 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer"
-                style={{
-                  background: `linear-gradient(to right, rgb(255,255,255,0.2) 0%, rgb(255,255,255,0.2) ${((blackHoleSize - 0.2) / 2.8) * 100}%, rgb(255,255,255,0.1) ${((blackHoleSize - 0.2) / 2.8) * 100}%, rgb(255,255,255,0.1) 100%)`
-                }}
-              />
-              <span className="text-xs w-6 text-right">{blackHoleSize.toFixed(1)}</span>
-            </div>
-            <div className="mt-2 text-gray-500 text-xs">🖱 Move mouse</div>
-            <div className="text-gray-500 text-xs">🔄 Scroll to adjust</div>
+            <div className="mt-2 text-gray-500">🖱 Move mouse</div>
+            <div className="text-gray-500">🔄 Scroll to adjust</div>
           </div>
         </div>
       </div>
