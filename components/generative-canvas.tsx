@@ -148,6 +148,7 @@ export default function GenerativeCanvas() {
         waveIntensity={waveIntensity}
         colorPalette={colorPalette}
         qualitySettings={qualitySettings}
+        performanceMonitor={performanceMonitorRef.current}
       />
 
       {/* UI Overlay */}

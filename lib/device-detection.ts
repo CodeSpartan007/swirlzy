@@ -107,38 +107,79 @@ export function getQualitySettings(level: QualityLevel): QualitySettings {
 }
 
 export class PerformanceMonitor {
-  private frameCount = 0;
-  private lastTime = performance.now();
-  private fps = 60;
-  private fpsHistory: number[] = [];
-  private readonly historySize = 30;
+  private lastFrameTime = performance.now();
+  private frameTimes: number[] = [];
+  private readonly frameHistorySize = 60;
+  private averageFps = 60;
+  private lastReportTime = performance.now();
+  private readonly reportInterval = 500; // Update FPS display every 500ms
   private fpsThreshold = 50;
   private qualityLevel: QualityLevel;
+  private lastQualityAdjustmentTime = 0;
+  private readonly qualityAdjustmentCooldown = 3000; // Wait 3 seconds before adjusting again
 
   constructor(initialQuality: QualityLevel) {
     this.qualityLevel = initialQuality;
   }
 
-  update(): { fps: number; shouldAdjustQuality: boolean; newQuality?: QualityLevel } {
-    this.frameCount++;
+  /**
+   * Call this from requestAnimationFrame to track frame timing
+   */
+  recordFrame(): void {
     const now = performance.now();
-    const deltaTime = now - this.lastTime;
-
-    if (deltaTime >= 1000) {
-      this.fps = (this.frameCount * 1000) / deltaTime;
-      this.fpsHistory.push(this.fps);
-
-      if (this.fpsHistory.length > this.historySize) {
-        this.fpsHistory.shift();
+    const deltaTime = now - this.lastFrameTime;
+    
+    // Only record if deltaTime is reasonable (> 0)
+    if (deltaTime > 0) {
+      this.frameTimes.push(deltaTime);
+      
+      // Keep only the last N frame times for rolling average
+      if (this.frameTimes.length > this.frameHistorySize) {
+        this.frameTimes.shift();
       }
+    }
+    
+    this.lastFrameTime = now;
+  }
 
-      this.frameCount = 0;
-      this.lastTime = now;
-
-      return this.analyzePerformance();
+  /**
+   * Call periodically (e.g., every 500ms) to get FPS and check quality adjustment
+   * Returns the current FPS and whether quality should be adjusted
+   */
+  update(): { fps: number; shouldAdjustQuality: boolean; newQuality?: QualityLevel } {
+    const now = performance.now();
+    
+    // Only update FPS display at the report interval
+    if (now - this.lastReportTime >= this.reportInterval) {
+      this.averageFps = this.calculateAverageFps();
+      this.lastReportTime = now;
+      
+      // Check if we should adjust quality (with cooldown)
+      if (now - this.lastQualityAdjustmentTime >= this.qualityAdjustmentCooldown) {
+        const qualityAdjustment = this.analyzePerformance();
+        if (qualityAdjustment.shouldAdjustQuality) {
+          this.lastQualityAdjustmentTime = now;
+        }
+        return qualityAdjustment;
+      }
     }
 
-    return { fps: this.fps, shouldAdjustQuality: false };
+    return { fps: this.averageFps, shouldAdjustQuality: false };
+  }
+
+  /**
+   * Calculate average FPS from frame times using rolling average
+   */
+  private calculateAverageFps(): number {
+    if (this.frameTimes.length === 0) {
+      return 60;
+    }
+
+    // Calculate average delta time
+    const averageDeltaTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
+    
+    // FPS = 1000 / averageDeltaTime (in milliseconds)
+    return Math.round(1000 / averageDeltaTime);
   }
 
   private analyzePerformance(): {
@@ -146,36 +187,36 @@ export class PerformanceMonitor {
     shouldAdjustQuality: boolean;
     newQuality?: QualityLevel;
   } {
-    if (this.fpsHistory.length < 5) {
-      return { fps: this.fps, shouldAdjustQuality: false };
+    // Need enough frames to make a decision
+    if (this.frameTimes.length < 10) {
+      return { fps: this.averageFps, shouldAdjustQuality: false };
     }
 
-    const recentFPS = this.fpsHistory.slice(-5);
-    const avgFPS = recentFPS.reduce((a, b) => a + b) / recentFPS.length;
+    const currentFps = this.averageFps;
 
     // If FPS is consistently low, reduce quality
-    if (avgFPS < this.fpsThreshold && this.qualityLevel !== 'low') {
+    if (currentFps < this.fpsThreshold && this.qualityLevel !== 'low') {
       const newQuality = this.qualityLevel === 'high' ? 'medium' : 'low';
       this.qualityLevel = newQuality;
       return {
-        fps: this.fps,
+        fps: currentFps,
         shouldAdjustQuality: true,
         newQuality,
       };
     }
 
     // If FPS is good and we're not on high, try to increase quality
-    if (avgFPS > this.fpsThreshold + 15 && this.qualityLevel !== 'high') {
+    if (currentFps > this.fpsThreshold + 15 && this.qualityLevel !== 'high') {
       const newQuality = this.qualityLevel === 'low' ? 'medium' : 'high';
       this.qualityLevel = newQuality;
       return {
-        fps: this.fps,
+        fps: currentFps,
         shouldAdjustQuality: true,
         newQuality,
       };
     }
 
-    return { fps: this.fps, shouldAdjustQuality: false };
+    return { fps: currentFps, shouldAdjustQuality: false };
   }
 
   getQualityLevel(): QualityLevel {

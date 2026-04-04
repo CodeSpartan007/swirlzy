@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import type { QualitySettings } from '@/lib/device-detection';
+import type { QualitySettings, PerformanceMonitor } from '@/lib/device-detection';
 
 const vertexShader = `
   varying vec2 vUv;
@@ -414,6 +414,7 @@ interface ShaderCanvasProps {
   waveIntensity: number;
   colorPalette: number;
   qualitySettings: QualitySettings | null;
+  performanceMonitor: PerformanceMonitor | null;
 }
 
 export default function ShaderCanvas({
@@ -422,6 +423,7 @@ export default function ShaderCanvas({
   waveIntensity,
   colorPalette,
   qualitySettings,
+  performanceMonitor,
 }: ShaderCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -548,6 +550,11 @@ export default function ShaderCanvas({
     // Animation loop
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
+
+      // Record frame timing for FPS calculation
+      if (performanceMonitor) {
+        performanceMonitor.recordFrame();
+      }
 
       let elapsed: number;
       
