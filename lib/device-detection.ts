@@ -109,14 +109,18 @@ export function getQualitySettings(level: QualityLevel): QualitySettings {
 export class PerformanceMonitor {
   private lastFrameTime = performance.now();
   private frameTimes: number[] = [];
-  private readonly frameHistorySize = 60;
+  private readonly frameHistorySize = 60; // ~1 second of frames
+  private fpsReadings: number[] = []; // Long-term FPS history for quality decisions
+  private readonly fpsReadingHistorySize = 6; // ~3 seconds (6 readings × 500ms)
   private averageFps = 60;
   private lastReportTime = performance.now();
   private readonly reportInterval = 500; // Update FPS display every 500ms
   private fpsThreshold = 50;
   private qualityLevel: QualityLevel;
   private lastQualityAdjustmentTime = 0;
-  private readonly qualityAdjustmentCooldown = 3000; // Wait 3 seconds before adjusting again
+  private readonly qualityAdjustmentCooldown = 4000; // Wait 4 seconds before adjusting again
+  private lowPerformanceSamples = 0; // Count how many times FPS was below threshold
+  private readonly lowPerformanceThreshold = 3; // Need 3 consecutive low samples to downgrade
 
   constructor(initialQuality: QualityLevel) {
     this.qualityLevel = initialQuality;
@@ -152,6 +156,13 @@ export class PerformanceMonitor {
     // Only update FPS display at the report interval
     if (now - this.lastReportTime >= this.reportInterval) {
       this.averageFps = this.calculateAverageFps();
+      this.fpsReadings.push(this.averageFps);
+      
+      // Keep only the last N FPS readings (3+ seconds of data)
+      if (this.fpsReadings.length > this.fpsReadingHistorySize) {
+        this.fpsReadings.shift();
+      }
+      
       this.lastReportTime = now;
       
       // Check if we should adjust quality (with cooldown)
@@ -159,6 +170,8 @@ export class PerformanceMonitor {
         const qualityAdjustment = this.analyzePerformance();
         if (qualityAdjustment.shouldAdjustQuality) {
           this.lastQualityAdjustmentTime = now;
+          // Reset low performance counter after quality adjustment
+          this.lowPerformanceSamples = 0;
         }
         return qualityAdjustment;
       }
@@ -182,20 +195,45 @@ export class PerformanceMonitor {
     return Math.round(1000 / averageDeltaTime);
   }
 
+  /**
+   * Get average FPS over the long-term history (2-3 seconds)
+   */
+  private getAverageFpsOverTime(): number {
+    if (this.fpsReadings.length === 0) {
+      return this.averageFps;
+    }
+    return Math.round(
+      this.fpsReadings.reduce((a, b) => a + b, 0) / this.fpsReadings.length
+    );
+  }
+
   private analyzePerformance(): {
     fps: number;
     shouldAdjustQuality: boolean;
     newQuality?: QualityLevel;
   } {
-    // Need enough frames to make a decision
-    if (this.frameTimes.length < 10) {
+    // Need enough readings to make a decision (at least 2 seconds of data)
+    if (this.fpsReadings.length < 3) {
       return { fps: this.averageFps, shouldAdjustQuality: false };
     }
 
+    const averageFpsOverTime = this.getAverageFpsOverTime();
     const currentFps = this.averageFps;
 
-    // If FPS is consistently low, reduce quality
-    if (currentFps < this.fpsThreshold && this.qualityLevel !== 'low') {
+    // Track consecutive low FPS samples for aggressive downgrade prevention
+    if (currentFps < this.fpsThreshold) {
+      this.lowPerformanceSamples++;
+    } else {
+      // Reset counter if performance improves
+      this.lowPerformanceSamples = 0;
+    }
+
+    // Only downgrade if FPS has been consistently low
+    if (
+      this.lowPerformanceSamples >= this.lowPerformanceThreshold &&
+      averageFpsOverTime < this.fpsThreshold &&
+      this.qualityLevel !== 'low'
+    ) {
       const newQuality = this.qualityLevel === 'high' ? 'medium' : 'low';
       this.qualityLevel = newQuality;
       return {
@@ -205,8 +243,11 @@ export class PerformanceMonitor {
       };
     }
 
-    // If FPS is good and we're not on high, try to increase quality
-    if (currentFps > this.fpsThreshold + 15 && this.qualityLevel !== 'high') {
+    // Upgrade only if performance is consistently good (higher threshold for upgrade)
+    if (
+      averageFpsOverTime > this.fpsThreshold + 20 &&
+      this.qualityLevel !== 'high'
+    ) {
       const newQuality = this.qualityLevel === 'low' ? 'medium' : 'high';
       this.qualityLevel = newQuality;
       return {
