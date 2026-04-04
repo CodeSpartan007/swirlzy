@@ -115,12 +115,16 @@ export class PerformanceMonitor {
   private averageFps = 60;
   private lastReportTime = performance.now();
   private readonly reportInterval = 500; // Update FPS display every 500ms
-  private fpsThreshold = 50;
+  private readonly fpsThresholdHighToMedium = 50; // Downgrade from high to medium when below 50 FPS
+  private readonly fpsThresholdMediumToLow = 30; // Downgrade from medium to low when below 30 FPS
+  private readonly fpsThresholdMediumToHigh = 60; // Upgrade from medium to high when above 60 FPS
+  private readonly fpsThresholdLowToMedium = 40; // Upgrade from low to medium when above 40 FPS
   private qualityLevel: QualityLevel;
   private lastQualityAdjustmentTime = 0;
   private readonly qualityAdjustmentCooldown = 4000; // Wait 4 seconds before adjusting again
   private lowPerformanceSamples = 0; // Count how many times FPS was below threshold
-  private readonly lowPerformanceThreshold = 3; // Need 3 consecutive low samples to downgrade
+  private readonly lowPerformanceThresholdForMedium = 3; // Need 3 samples below 50 to downgrade to medium
+  private readonly lowPerformanceThresholdForLow = 4; // Need 4 samples below 30 to downgrade to low (very conservative)
 
   constructor(initialQuality: QualityLevel) {
     this.qualityLevel = initialQuality;
@@ -220,41 +224,86 @@ export class PerformanceMonitor {
     const averageFpsOverTime = this.getAverageFpsOverTime();
     const currentFps = this.averageFps;
 
-    // Track consecutive low FPS samples for aggressive downgrade prevention
-    if (currentFps < this.fpsThreshold) {
-      this.lowPerformanceSamples++;
-    } else {
-      // Reset counter if performance improves
-      this.lowPerformanceSamples = 0;
-    }
+    // Quality-specific logic to avoid aggressive downgrading
+    if (this.qualityLevel === 'high') {
+      // Only downgrade from high to medium if FPS consistently below 50
+      if (currentFps < this.fpsThresholdHighToMedium) {
+        this.lowPerformanceSamples++;
+      } else {
+        this.lowPerformanceSamples = 0;
+      }
 
-    // Only downgrade if FPS has been consistently low
-    if (
-      this.lowPerformanceSamples >= this.lowPerformanceThreshold &&
-      averageFpsOverTime < this.fpsThreshold &&
-      this.qualityLevel !== 'low'
-    ) {
-      const newQuality = this.qualityLevel === 'high' ? 'medium' : 'low';
-      this.qualityLevel = newQuality;
-      return {
-        fps: currentFps,
-        shouldAdjustQuality: true,
-        newQuality,
-      };
-    }
+      if (
+        this.lowPerformanceSamples >= this.lowPerformanceThresholdForMedium &&
+        averageFpsOverTime < this.fpsThresholdHighToMedium
+      ) {
+        this.qualityLevel = 'medium';
+        return {
+          fps: currentFps,
+          shouldAdjustQuality: true,
+          newQuality: 'medium',
+        };
+      }
+    } else if (this.qualityLevel === 'medium') {
+      // Medium: can go to high if FPS is consistently above 60
+      if (currentFps > this.fpsThresholdMediumToHigh) {
+        this.lowPerformanceSamples++;
+      } else {
+        this.lowPerformanceSamples = 0;
+      }
 
-    // Upgrade only if performance is consistently good (higher threshold for upgrade)
-    if (
-      averageFpsOverTime > this.fpsThreshold + 20 &&
-      this.qualityLevel !== 'high'
-    ) {
-      const newQuality = this.qualityLevel === 'low' ? 'medium' : 'high';
-      this.qualityLevel = newQuality;
-      return {
-        fps: currentFps,
-        shouldAdjustQuality: true,
-        newQuality,
-      };
+      if (
+        this.lowPerformanceSamples >= 2 &&
+        averageFpsOverTime > this.fpsThresholdMediumToHigh
+      ) {
+        this.qualityLevel = 'high';
+        return {
+          fps: currentFps,
+          shouldAdjustQuality: true,
+          newQuality: 'high',
+        };
+      }
+
+      // Medium to Low: only if FPS is VERY consistently below 30
+      if (currentFps < this.fpsThresholdMediumToLow) {
+        this.lowPerformanceSamples++;
+      } else if (currentFps < this.fpsThresholdHighToMedium) {
+        // Keep counter going if between 30-50 but below medium-to-high threshold
+        this.lowPerformanceSamples = Math.max(0, this.lowPerformanceSamples - 1);
+      } else {
+        this.lowPerformanceSamples = 0;
+      }
+
+      if (
+        this.lowPerformanceSamples >= this.lowPerformanceThresholdForLow &&
+        averageFpsOverTime < this.fpsThresholdMediumToLow
+      ) {
+        this.qualityLevel = 'low';
+        return {
+          fps: currentFps,
+          shouldAdjustQuality: true,
+          newQuality: 'low',
+        };
+      }
+    } else if (this.qualityLevel === 'low') {
+      // Low: upgrade to medium if FPS is consistently above 40
+      if (currentFps > this.fpsThresholdLowToMedium) {
+        this.lowPerformanceSamples++;
+      } else {
+        this.lowPerformanceSamples = 0;
+      }
+
+      if (
+        this.lowPerformanceSamples >= 2 &&
+        averageFpsOverTime > this.fpsThresholdLowToMedium
+      ) {
+        this.qualityLevel = 'medium';
+        return {
+          fps: currentFps,
+          shouldAdjustQuality: true,
+          newQuality: 'medium',
+        };
+      }
     }
 
     return { fps: currentFps, shouldAdjustQuality: false };
@@ -262,9 +311,5 @@ export class PerformanceMonitor {
 
   getQualityLevel(): QualityLevel {
     return this.qualityLevel;
-  }
-
-  setFpsThreshold(threshold: number): void {
-    this.fpsThreshold = threshold;
   }
 }
