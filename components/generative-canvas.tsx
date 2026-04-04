@@ -20,6 +20,7 @@ export default function GenerativeCanvas() {
   const [hasWebGL, setHasWebGL] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
   const [qualityLevel, setQualityLevel] = useState<QualityLevel>('high');
+  const [qualityMode, setQualityMode] = useState<QualityLevel | 'auto'>('auto');
   const [deviceCapabilities, setDeviceCapabilities] = useState<DeviceCapabilities | null>(null);
   const [fps, setFps] = useState(60);
   const [qualitySettings, setQualitySettings] = useState<QualitySettings | null>(null);
@@ -34,6 +35,17 @@ export default function GenerativeCanvas() {
     hideUITimeoutRef.current = setTimeout(() => {
       setShowUI(false);
     }, 3000);
+  };
+
+  const handleQualityModeChange = (mode: QualityLevel | 'auto') => {
+    setQualityMode(mode);
+    if (performanceMonitorRef.current) {
+      performanceMonitorRef.current.setManualQuality(mode);
+    }
+    if (mode !== 'auto') {
+      setQualityLevel(mode);
+      setQualitySettings(getQualitySettings(mode));
+    }
   };
 
   useEffect(() => {
@@ -110,14 +122,15 @@ export default function GenerativeCanvas() {
 
       setFps(Math.round(fps));
 
-      if (shouldAdjustQuality && newQuality) {
+      // Only apply auto quality adjustments if in auto mode
+      if (qualityMode === 'auto' && shouldAdjustQuality && newQuality) {
         setQualityLevel(newQuality);
         setQualitySettings(getQualitySettings(newQuality));
       }
     }, 1000);
 
     return () => clearInterval(monitoringInterval);
-  }, []);
+  }, [qualityMode]);
 
   // Fallback UI for WebGL not supported
   if (!hasWebGL) {
@@ -186,6 +199,51 @@ export default function GenerativeCanvas() {
               <div className="text-yellow-400">Device: {deviceCapabilities?.deviceType}</div>
               <div className="text-green-400">Quality: {qualityLevel}</div>
               <div className="text-blue-400">FPS: {fps}</div>
+              <div className="mt-3 space-y-2">
+                <div className="text-xs font-semibold text-white">Quality Mode:</div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => handleQualityModeChange('auto')}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      qualityMode === 'auto'
+                        ? 'bg-blue-500/80 text-white'
+                        : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                    }`}
+                  >
+                    Auto
+                  </button>
+                  <button
+                    onClick={() => handleQualityModeChange('high')}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      qualityMode === 'high'
+                        ? 'bg-green-500/80 text-white'
+                        : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                    }`}
+                  >
+                    High
+                  </button>
+                  <button
+                    onClick={() => handleQualityModeChange('medium')}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      qualityMode === 'medium'
+                        ? 'bg-yellow-500/80 text-white'
+                        : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                    }`}
+                  >
+                    Med
+                  </button>
+                  <button
+                    onClick={() => handleQualityModeChange('low')}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      qualityMode === 'low'
+                        ? 'bg-red-500/80 text-white'
+                        : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                    }`}
+                  >
+                    Low
+                  </button>
+                </div>
+              </div>
               <div className="mt-2 text-gray-500 text-xs">Move mouse to interact</div>
             </div>
           </div>

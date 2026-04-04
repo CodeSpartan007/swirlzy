@@ -125,9 +125,28 @@ export class PerformanceMonitor {
   private lowPerformanceSamples = 0; // Count how many times FPS was below threshold
   private readonly lowPerformanceThresholdForMedium = 3; // Need 3 samples below 50 to downgrade to medium
   private readonly lowPerformanceThresholdForLow = 4; // Need 4 samples below 30 to downgrade to low (very conservative)
+  private manualQualityMode: QualityLevel | 'auto' = 'auto'; // Manual override mode
 
   constructor(initialQuality: QualityLevel) {
     this.qualityLevel = initialQuality;
+  }
+
+  /**
+   * Set manual quality mode. 'auto' enables automatic adjustment.
+   */
+  setManualQuality(mode: QualityLevel | 'auto'): void {
+    this.manualQualityMode = mode;
+    if (mode !== 'auto') {
+      this.qualityLevel = mode;
+      this.lowPerformanceSamples = 0;
+    }
+  }
+
+  /**
+   * Get current manual quality mode
+   */
+  getManualMode(): QualityLevel | 'auto' {
+    return this.manualQualityMode;
   }
 
   /**
@@ -169,15 +188,18 @@ export class PerformanceMonitor {
       
       this.lastReportTime = now;
       
-      // Check if we should adjust quality (with cooldown)
-      if (now - this.lastQualityAdjustmentTime >= this.qualityAdjustmentCooldown) {
-        const qualityAdjustment = this.analyzePerformance();
-        if (qualityAdjustment.shouldAdjustQuality) {
-          this.lastQualityAdjustmentTime = now;
-          // Reset low performance counter after quality adjustment
-          this.lowPerformanceSamples = 0;
+      // Only check quality adjustment if in auto mode
+      if (this.manualQualityMode === 'auto') {
+        // Check if we should adjust quality (with cooldown)
+        if (now - this.lastQualityAdjustmentTime >= this.qualityAdjustmentCooldown) {
+          const qualityAdjustment = this.analyzePerformance();
+          if (qualityAdjustment.shouldAdjustQuality) {
+            this.lastQualityAdjustmentTime = now;
+            // Reset low performance counter after quality adjustment
+            this.lowPerformanceSamples = 0;
+          }
+          return qualityAdjustment;
         }
-        return qualityAdjustment;
       }
     }
 
