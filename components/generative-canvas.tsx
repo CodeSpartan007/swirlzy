@@ -2,6 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import ShaderCanvas from '@/components/generative-shader';
+import {
+  detectDeviceCapabilities,
+  type QualityLevel,
+  type DeviceCapabilities,
+  PerformanceMonitor,
+  type QualitySettings,
+  getQualitySettings,
+} from '@/lib/device-detection';
 
 export default function GenerativeCanvas() {
   const [isPaused, setIsPaused] = useState(false);
@@ -11,7 +19,12 @@ export default function GenerativeCanvas() {
   const [showUI, setShowUI] = useState(true);
   const [hasWebGL, setHasWebGL] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
+  const [qualityLevel, setQualityLevel] = useState<QualityLevel>('high');
+  const [deviceCapabilities, setDeviceCapabilities] = useState<DeviceCapabilities | null>(null);
+  const [fps, setFps] = useState(60);
+  const [qualitySettings, setQualitySettings] = useState<QualitySettings | null>(null);
   const hideUITimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const performanceMonitorRef = useRef<PerformanceMonitor | null>(null);
 
   const handleMouseMove = () => {
     setShowUI(true);
@@ -24,8 +37,18 @@ export default function GenerativeCanvas() {
   };
 
   useEffect(() => {
-    // Check WebGL support
+    // Detect device capabilities and initialize performance monitoring
     try {
+      const capabilities = detectDeviceCapabilities();
+      setDeviceCapabilities(capabilities);
+      setQualityLevel(capabilities.initialQualityLevel);
+      setQualitySettings(getQualitySettings(capabilities.initialQualityLevel));
+      
+      performanceMonitorRef.current = new PerformanceMonitor(
+        capabilities.initialQualityLevel
+      );
+
+      // Check WebGL support
       const canvas = document.createElement('canvas');
       const gl =
         canvas.getContext('webgl') || canvas.getContext('webgl2');
@@ -77,6 +100,25 @@ export default function GenerativeCanvas() {
     return () => window.removeEventListener('wheel', handleScroll);
   }, []);
 
+  // Performance monitoring and quality adjustment
+  useEffect(() => {
+    if (!performanceMonitorRef.current) return;
+
+    const monitoringInterval = setInterval(() => {
+      const { fps, shouldAdjustQuality, newQuality } =
+        performanceMonitorRef.current!.update();
+
+      setFps(Math.round(fps));
+
+      if (shouldAdjustQuality && newQuality) {
+        setQualityLevel(newQuality);
+        setQualitySettings(getQualitySettings(newQuality));
+      }
+    }, 1000);
+
+    return () => clearInterval(monitoringInterval);
+  }, []);
+
   // Fallback UI for WebGL not supported
   if (!hasWebGL) {
     return (
@@ -105,6 +147,7 @@ export default function GenerativeCanvas() {
         speed={speed}
         waveIntensity={waveIntensity}
         colorPalette={colorPalette}
+        qualitySettings={qualitySettings}
       />
 
       {/* UI Overlay */}
@@ -138,8 +181,12 @@ export default function GenerativeCanvas() {
           <div className="text-gray-400 px-2 pt-2 border-t border-white/10">
             <div>Speed: {speed.toFixed(2)}x</div>
             <div>Wave: {waveIntensity.toFixed(2)}</div>
-            <div className="mt-2 text-gray-500">🖱 Move mouse</div>
-            <div className="text-gray-500">🔄 Scroll to adjust</div>
+            <div className="mt-4 text-gray-500 border-t border-white/10 pt-2">
+              <div className="text-yellow-400">Device: {deviceCapabilities?.deviceType}</div>
+              <div className="text-green-400">Quality: {qualityLevel}</div>
+              <div className="text-blue-400">FPS: {fps}</div>
+              <div className="mt-2 text-gray-500 text-xs">Move mouse to interact</div>
+            </div>
           </div>
         </div>
       </div>

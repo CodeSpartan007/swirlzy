@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import type { QualitySettings } from '@/lib/device-detection';
 
 const vertexShader = `
   varying vec2 vUv;
@@ -22,6 +23,8 @@ const fragmentShader = `
   uniform float uClickTime;
   uniform float uRealClickTime;
   uniform float uSpeed;
+  uniform float uShaderComplexity;
+  uniform int uMaxFBMOctaves;
   uniform vec3 uColor1;
   uniform vec3 uColor2;
   uniform vec3 uColor3;
@@ -67,8 +70,11 @@ const fragmentShader = `
     float frequency = 1.0;
     float maxValue = 0.0;
     
+    // Clamp octaves to shader complexity setting
+    int maxOctaves = min(octaves, uMaxFBMOctaves);
+    
     for (int i = 0; i < 8; i++) {
-      if (i >= octaves) break;
+      if (i >= maxOctaves) break;
       
       value += amplitude * snoise(pos * frequency + time * 0.05);
       maxValue += amplitude;
@@ -407,6 +413,7 @@ interface ShaderCanvasProps {
   speed: number;
   waveIntensity: number;
   colorPalette: number;
+  qualitySettings: QualitySettings | null;
 }
 
 export default function ShaderCanvas({
@@ -414,6 +421,7 @@ export default function ShaderCanvas({
   speed,
   waveIntensity,
   colorPalette,
+  qualitySettings,
 }: ShaderCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -496,7 +504,8 @@ export default function ShaderCanvas({
       const width = window.innerWidth;
       const height = window.innerHeight;
       renderer.setSize(width, height);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      const pixelRatio = qualitySettings?.pixelRatio ?? Math.min(window.devicePixelRatio, 2);
+      renderer.setPixelRatio(pixelRatio);
     };
 
     handleResize();
@@ -514,6 +523,8 @@ export default function ShaderCanvas({
       uRealClickTime: { value: -10 },
       uSpeed: { value: speed },
       uWaveIntensity: { value: waveIntensity },
+      uShaderComplexity: { value: qualitySettings?.shaderComplexity ?? 1.0 },
+      uMaxFBMOctaves: { value: qualitySettings?.fbmOctaves ?? 6 },
       uColor1: { value: new THREE.Color(0xff006e) },
       uColor2: { value: new THREE.Color(0xfb5607) },
       uColor3: { value: new THREE.Color(0x8338ec) },
@@ -580,6 +591,8 @@ export default function ShaderCanvas({
         material.uniforms.uMouseForce.value = mouseForceRef.current;
         material.uniforms.uSpeed.value = speed;
         material.uniforms.uWaveIntensity.value = waveIntensity;
+        material.uniforms.uShaderComplexity.value = qualitySettings?.shaderComplexity ?? 1.0;
+        material.uniforms.uMaxFBMOctaves.value = qualitySettings?.fbmOctaves ?? 6;
 
         // Dynamic palette cycling - continuously shift through color palettes (extremely slowly for smooth transitions)
         const cycleSpeed = 0.015; // Reduced from 0.03 for even smoother transitions
