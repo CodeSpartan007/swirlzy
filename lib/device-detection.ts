@@ -55,7 +55,7 @@ const QUALITY_PRESETS: Record<QualityLevel, QualitySettings> = {
 };
 
 export function detectDeviceCapabilities(): DeviceCapabilities {
-  // Detect device type
+  // Detect device type for informational purposes only
   const userAgent = navigator.userAgent.toLowerCase();
   let deviceType: DeviceType = 'desktop';
   
@@ -72,21 +72,16 @@ export function detectDeviceCapabilities(): DeviceCapabilities {
     canvas.getContext('webgl2')
   );
 
-  // Detect GPU tier based on device type and available hardware
-  let gpuTier: 'high' | 'medium' | 'low' = 'medium';
+  // Do not make aggressive quality assumptions based on device type alone
+  // Start at medium quality for all devices and let FPS monitoring adjust
+  // This prevents strong mobile devices from starting at low quality
+  const initialQualityLevel: QualityLevel = 'medium';
   
-  if (deviceType === 'mobile') {
-    gpuTier = 'low';
-  } else if (deviceType === 'desktop' && hasWebGL2) {
+  // GPU tier is estimated but not used for initial quality
+  // It's informational only
+  let gpuTier: 'high' | 'medium' | 'low' = 'medium';
+  if (deviceType === 'desktop' && hasWebGL2) {
     gpuTier = 'high';
-  }
-
-  // Determine initial quality level
-  let initialQualityLevel: QualityLevel = 'high';
-  if (gpuTier === 'low') {
-    initialQualityLevel = 'low';
-  } else if (gpuTier === 'medium') {
-    initialQualityLevel = 'medium';
   }
 
   return {
@@ -94,11 +89,8 @@ export function detectDeviceCapabilities(): DeviceCapabilities {
     hasWebGL2,
     gpuTier,
     initialQualityLevel,
-    maxFPS: initialQualityLevel === 'low' ? 30 : 60,
-    pixelRatio:
-      initialQualityLevel === 'low'
-        ? 1
-        : Math.min(window.devicePixelRatio || 1, 2),
+    maxFPS: 60, // Start with 60 FPS target for all devices
+    pixelRatio: Math.min(window.devicePixelRatio || 1, 2), // Start with good pixel ratio
   };
 }
 
@@ -124,8 +116,10 @@ export class PerformanceMonitor {
   private readonly qualityAdjustmentCooldown = 4000; // Wait 4 seconds before adjusting again
   private lowPerformanceSamples = 0; // Count how many times FPS was below threshold
   private readonly lowPerformanceThresholdForMedium = 3; // Need 3 samples below 50 to downgrade to medium
-  private readonly lowPerformanceThresholdForLow = 4; // Need 4 samples below 30 to downgrade to low (very conservative)
+  private readonly lowPerformanceThresholdForLow = 5; // Need 5 samples below 30 to downgrade to low (very conservative)
   private manualQualityMode: QualityLevel | 'auto' = 'auto'; // Manual override mode
+  private startTime = performance.now();
+  private readonly initialSettlingPeriod = 5000; // Wait 5 seconds before considering downgrading
 
   constructor(initialQuality: QualityLevel) {
     this.qualityLevel = initialQuality;
@@ -243,6 +237,14 @@ export class PerformanceMonitor {
       return { fps: this.averageFps, shouldAdjustQuality: false };
     }
 
+    const now = performance.now();
+    const timeSinceStart = now - this.startTime;
+    
+    // During initial settling period (5 seconds), don't downgrade quality
+    // This allows devices to stabilize and prevents false negatives
+    // Upgrades are still allowed if performance is excellent
+    const isSettlingPeriod = timeSinceStart < this.initialSettlingPeriod;
+
     const averageFpsOverTime = this.getAverageFpsOverTime();
     const currentFps = this.averageFps;
 
@@ -256,6 +258,7 @@ export class PerformanceMonitor {
       }
 
       if (
+        !isSettlingPeriod &&
         this.lowPerformanceSamples >= this.lowPerformanceThresholdForMedium &&
         averageFpsOverTime < this.fpsThresholdHighToMedium
       ) {
@@ -286,7 +289,7 @@ export class PerformanceMonitor {
         };
       }
 
-      // Medium to Low: only if FPS is VERY consistently below 30
+      // Medium to Low: only if FPS is VERY consistently below 30, and not during settling period
       if (currentFps < this.fpsThresholdMediumToLow) {
         this.lowPerformanceSamples++;
       } else if (currentFps < this.fpsThresholdHighToMedium) {
@@ -297,6 +300,7 @@ export class PerformanceMonitor {
       }
 
       if (
+        !isSettlingPeriod &&
         this.lowPerformanceSamples >= this.lowPerformanceThresholdForLow &&
         averageFpsOverTime < this.fpsThresholdMediumToLow
       ) {
