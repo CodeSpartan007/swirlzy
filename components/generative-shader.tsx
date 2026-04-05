@@ -25,6 +25,7 @@ const fragmentShader = `
   uniform float uSpeed;
   uniform float uShaderComplexity;
   uniform int uMaxFBMOctaves;
+  uniform float uBlackHoleSize;
   uniform vec3 uColor1;
   uniform vec3 uColor2;
   uniform vec3 uColor3;
@@ -205,8 +206,8 @@ const fragmentShader = `
     
     float dist = distance(pos, clickPos);
     
-    // Radius of effect (0.24 units) - doubled size
-    float effectRadius = 0.24;
+    // Radius of effect controlled by uniform (base 0.24 * scale)
+    float effectRadius = 0.24 * uBlackHoleSize;
     
     // Smooth falloff from center - stronger effect closer to center
     float falloff = smoothstep(effectRadius, 0.0, dist);
@@ -224,7 +225,7 @@ const fragmentShader = `
     vec2 delta = pos - clickPos;
     float dist = length(delta);
     
-    float effectRadius = 0.24;
+    float effectRadius = 0.24 * uBlackHoleSize;
     float falloff = smoothstep(effectRadius, 0.0, dist);
     
     // Create inward swirl - pulls coordinates toward center
@@ -416,6 +417,7 @@ interface ShaderCanvasProps {
   qualitySettings: QualitySettings | null;
   performanceMonitor: PerformanceMonitor | null;
   onFpsUpdate?: (fps: number) => void;
+  blackHoleSize: number;
 }
 
 export default function ShaderCanvas({
@@ -426,6 +428,7 @@ export default function ShaderCanvas({
   qualitySettings,
   performanceMonitor,
   onFpsUpdate,
+  blackHoleSize,
 }: ShaderCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -534,6 +537,7 @@ export default function ShaderCanvas({
       uWaveIntensity: { value: waveIntensity },
       uShaderComplexity: { value: qualitySettings?.shaderComplexity ?? 1.0 },
       uMaxFBMOctaves: { value: qualitySettings?.fbmOctaves ?? 6 },
+      uBlackHoleSize: { value: 1.0 },
       uColor1: { value: new THREE.Color(0xff006e) },
       uColor2: { value: new THREE.Color(0xfb5607) },
       uColor3: { value: new THREE.Color(0x8338ec) },
@@ -622,6 +626,7 @@ export default function ShaderCanvas({
         material.uniforms.uWaveIntensity.value = waveIntensity;
         material.uniforms.uShaderComplexity.value = qualitySettings?.shaderComplexity ?? 1.0;
         material.uniforms.uMaxFBMOctaves.value = qualitySettings?.fbmOctaves ?? 6;
+        material.uniforms.uBlackHoleSize.value = blackHoleSize;
 
         // Dynamic palette cycling - continuously shift through color palettes (extremely slowly for smooth transitions)
         const cycleSpeed = 0.015; // Reduced from 0.03 for even smoother transitions
