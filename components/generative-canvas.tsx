@@ -18,8 +18,16 @@ export default function GenerativeCanvas() {
   const [deviceCapabilities, setDeviceCapabilities] = useState<DeviceCapabilities | null>(null);
   const [fps, setFps] = useState(60);
   const [qualitySettings, setQualitySettings] = useState<QualitySettings | null>(null);
+  const [showUI, setShowUI] = useState(true);
+  const [hasWebGL, setHasWebGL] = useState(true);
+  const [webglError, setWebglError] = useState<string | null>(null);
+  const [qualityLevel, setQualityLevel] = useState<QualityLevel>('high');
   const hideUITimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const performanceMonitorRef = useRef<PerformanceMonitor | null>(null);
+  const performanceMonitorRef = useRef<any>(null);
+  
+  // Blackhole duration based on size: base 2 seconds, scales with size (0.2 to 2.5)
+  const baseDuration = 2;
+  const blackHoleDuration = baseDuration * blackHoleSize;
 
   const handleMouseMove = () => {
     setShowUI(true);
@@ -177,6 +185,7 @@ export default function GenerativeCanvas() {
         performanceMonitor={performanceMonitorRef.current}
         onFpsUpdate={handleFpsUpdate}
         blackHoleSize={blackHoleSize}
+        blackHoleDuration={blackHoleDuration}
       />
 
       {/* UI Overlay */}
