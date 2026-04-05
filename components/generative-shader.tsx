@@ -25,8 +25,6 @@ const fragmentShader = `
   uniform float uSpeed;
   uniform float uShaderComplexity;
   uniform int uMaxFBMOctaves;
-  uniform float uBlackHoleSize;
-  uniform float uBlackHoleDuration;
   uniform vec3 uColor1;
   uniform vec3 uColor2;
   uniform vec3 uColor3;
@@ -202,31 +200,31 @@ const fragmentShader = `
   
   // Black hole effect - small localized vortex that removes colors temporarily
   float blackHoleEffect(vec2 pos, vec2 clickPos, float realClickAge) {
-    // Only show effect if click is recent (fade out based on duration)
-    if (realClickAge > uBlackHoleDuration) return 0.0;
+    // Only show effect if click is recent (fade out over 3.2 real seconds)
+    if (realClickAge > 3.2) return 0.0;
     
     float dist = distance(pos, clickPos);
     
-    // Radius of effect controlled by uniform (base 0.24 * scale)
-    float effectRadius = 0.24 * uBlackHoleSize;
+    // Radius of effect (0.24 units) - doubled size
+    float effectRadius = 0.24;
     
     // Smooth falloff from center - stronger effect closer to center
     float falloff = smoothstep(effectRadius, 0.0, dist);
     
     // Fade out over real time (not animation speed)
-    float fadeOut = 1.0 - (realClickAge / uBlackHoleDuration);
+    float fadeOut = 1.0 - (realClickAge / 3.2);
     
     return falloff * fadeOut;
   }
   
   // Inward vortex distortion for black hole effect
   vec2 blackHoleDistortion(vec2 pos, vec2 clickPos, float realClickAge) {
-    if (realClickAge > uBlackHoleDuration) return vec2(0.0);
+    if (realClickAge > 3.2) return vec2(0.0);
     
     vec2 delta = pos - clickPos;
     float dist = length(delta);
     
-    float effectRadius = 0.24 * uBlackHoleSize;
+    float effectRadius = 0.24;
     float falloff = smoothstep(effectRadius, 0.0, dist);
     
     // Create inward swirl - pulls coordinates toward center
@@ -240,7 +238,7 @@ const fragmentShader = `
     vec2 perpendicular = vec2(-delta.y, delta.x) / max(dist, 0.01);
     distortion += perpendicular * sin(swirl) * falloff * 0.03;
     
-    float fadeOut = 1.0 - (realClickAge / uBlackHoleDuration);
+    float fadeOut = 1.0 - (realClickAge / 3.2);
     
     return distortion * fadeOut;
   }
@@ -418,8 +416,6 @@ interface ShaderCanvasProps {
   qualitySettings: QualitySettings | null;
   performanceMonitor: PerformanceMonitor | null;
   onFpsUpdate?: (fps: number) => void;
-  blackHoleSize: number;
-  blackHoleDuration: number;
 }
 
 export default function ShaderCanvas({
@@ -430,8 +426,6 @@ export default function ShaderCanvas({
   qualitySettings,
   performanceMonitor,
   onFpsUpdate,
-  blackHoleSize,
-  blackHoleDuration,
 }: ShaderCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -540,8 +534,6 @@ export default function ShaderCanvas({
       uWaveIntensity: { value: waveIntensity },
       uShaderComplexity: { value: qualitySettings?.shaderComplexity ?? 1.0 },
       uMaxFBMOctaves: { value: qualitySettings?.fbmOctaves ?? 6 },
-      uBlackHoleSize: { value: 1.0 },
-      uBlackHoleDuration: { value: 3.2 },
       uColor1: { value: new THREE.Color(0xff006e) },
       uColor2: { value: new THREE.Color(0xfb5607) },
       uColor3: { value: new THREE.Color(0x8338ec) },
@@ -630,8 +622,6 @@ export default function ShaderCanvas({
         material.uniforms.uWaveIntensity.value = waveIntensity;
         material.uniforms.uShaderComplexity.value = qualitySettings?.shaderComplexity ?? 1.0;
         material.uniforms.uMaxFBMOctaves.value = qualitySettings?.fbmOctaves ?? 6;
-        material.uniforms.uBlackHoleSize.value = blackHoleSize;
-        material.uniforms.uBlackHoleDuration.value = blackHoleDuration;
 
         // Dynamic palette cycling - continuously shift through color palettes (extremely slowly for smooth transitions)
         const cycleSpeed = 0.015; // Reduced from 0.03 for even smoother transitions

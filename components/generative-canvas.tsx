@@ -13,21 +13,16 @@ export default function GenerativeCanvas() {
   const [speed, setSpeed] = useState(1);
   const [waveIntensity, setWaveIntensity] = useState(1);
   const [colorPalette, setColorPalette] = useState(0);
-  const [blackHoleSize, setBlackHoleSize] = useState(1);
-  const [qualityMode, setQualityMode] = useState<QualityLevel | 'auto'>('auto');
-  const [deviceCapabilities, setDeviceCapabilities] = useState<DeviceCapabilities | null>(null);
-  const [fps, setFps] = useState(60);
-  const [qualitySettings, setQualitySettings] = useState<QualitySettings | null>(null);
   const [showUI, setShowUI] = useState(true);
   const [hasWebGL, setHasWebGL] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
   const [qualityLevel, setQualityLevel] = useState<QualityLevel>('high');
+  const [qualityMode, setQualityMode] = useState<QualityLevel | 'auto'>('auto');
+  const [deviceCapabilities, setDeviceCapabilities] = useState<DeviceCapabilities | null>(null);
+  const [fps, setFps] = useState(60);
+  const [qualitySettings, setQualitySettings] = useState<QualitySettings | null>(null);
   const hideUITimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const performanceMonitorRef = useRef<any>(null);
-  
-  // Blackhole duration based on size: base 2 seconds, scales with size (0.2 to 2.5)
-  const baseDuration = 2;
-  const blackHoleDuration = baseDuration * blackHoleSize;
+  const performanceMonitorRef = useRef<PerformanceMonitor | null>(null);
 
   const handleMouseMove = () => {
     setShowUI(true);
@@ -184,8 +179,6 @@ export default function GenerativeCanvas() {
         qualitySettings={qualitySettings}
         performanceMonitor={performanceMonitorRef.current}
         onFpsUpdate={handleFpsUpdate}
-        blackHoleSize={blackHoleSize}
-        blackHoleDuration={blackHoleDuration}
       />
 
       {/* UI Overlay */}
@@ -219,20 +212,6 @@ export default function GenerativeCanvas() {
           <div className="text-gray-400 px-2 pt-2 border-t border-white/10">
             <div>Speed: {speed.toFixed(2)}x</div>
             <div>Wave: {waveIntensity.toFixed(2)}</div>
-            <div className="mt-3 space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span>Blackhole: {blackHoleSize.toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                min="0.2"
-                max="2.5"
-                step="0.05"
-                value={blackHoleSize}
-                onChange={(e) => setBlackHoleSize(parseFloat(e.target.value))}
-                className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-purple-500"
-              />
-            </div>
             <div className="mt-4 text-gray-500 border-t border-white/10 pt-2">
               <div className="text-yellow-400">Device: {deviceCapabilities?.deviceType}</div>
               <div className="text-green-400">Quality: {qualityLevel}</div>
