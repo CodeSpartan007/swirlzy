@@ -415,6 +415,7 @@ interface ShaderCanvasProps {
   colorPalette: number;
   qualitySettings: QualitySettings | null;
   performanceMonitor: PerformanceMonitor | null;
+  onFpsUpdate?: (fps: number) => void;
 }
 
 export default function ShaderCanvas({
@@ -424,6 +425,7 @@ export default function ShaderCanvas({
   colorPalette,
   qualitySettings,
   performanceMonitor,
+  onFpsUpdate,
 }: ShaderCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -439,6 +441,11 @@ export default function ShaderCanvas({
   const animationIdRef = useRef<number | null>(null);
   const frozenTimeRef = useRef<number | null>(null);
   const wasPausedRef = useRef(false);
+  
+  // FPS tracking refs - updated every frame, state updated every 500ms
+  const fpsFrameCountRef = useRef(0);
+  const fpsLastUpdateRef = useRef(performance.now());
+  const fpsLastFrameTimeRef = useRef(performance.now());
 
   const colorPalettes = [
     // 1. Neon Pink & Purple
@@ -551,7 +558,22 @@ export default function ShaderCanvas({
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
 
-      // Record frame timing for FPS calculation
+      // Calculate FPS independently every frame
+      const now = performance.now();
+      const deltaTime = now - fpsLastFrameTimeRef.current;
+      fpsLastFrameTimeRef.current = now;
+      fpsFrameCountRef.current++;
+
+      // Update FPS display every 500ms
+      const timeSinceLastUpdate = now - fpsLastUpdateRef.current;
+      if (timeSinceLastUpdate >= 500 && onFpsUpdate) {
+        const fps = Math.round((fpsFrameCountRef.current * 1000) / timeSinceLastUpdate);
+        onFpsUpdate(fps);
+        fpsFrameCountRef.current = 0;
+        fpsLastUpdateRef.current = now;
+      }
+
+      // Record frame timing for performance monitor
       if (performanceMonitor) {
         performanceMonitor.recordFrame();
       }

@@ -48,6 +48,10 @@ export default function GenerativeCanvas() {
     }
   };
 
+  const handleFpsUpdate = (newFps: number) => {
+    setFps(newFps);
+  };
+
   useEffect(() => {
     // Detect device capabilities and initialize performance monitoring
     try {
@@ -117,10 +121,8 @@ export default function GenerativeCanvas() {
     if (!performanceMonitorRef.current) return;
 
     const monitoringInterval = setInterval(() => {
-      const { fps, shouldAdjustQuality, newQuality } =
+      const { shouldAdjustQuality, newQuality } =
         performanceMonitorRef.current!.update();
-
-      setFps(Math.round(fps));
 
       // Only apply auto quality adjustments if in auto mode
       if (qualityMode === 'auto' && shouldAdjustQuality && newQuality) {
@@ -162,6 +164,7 @@ export default function GenerativeCanvas() {
         colorPalette={colorPalette}
         qualitySettings={qualitySettings}
         performanceMonitor={performanceMonitorRef.current}
+        onFpsUpdate={handleFpsUpdate}
       />
 
       {/* UI Overlay */}
