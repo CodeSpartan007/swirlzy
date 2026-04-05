@@ -2,13 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import ShaderCanvas from '@/components/generative-shader';
-import {
-  detectDeviceCapabilities,
-  type QualityLevel,
-  type DeviceCapabilities,
-  PerformanceMonitor,
-  type QualitySettings,
-  getQualitySettings,
+import type {
+  QualityLevel,
+  DeviceCapabilities,
+  QualitySettings,
 } from '@/lib/device-detection';
 
 export default function GenerativeCanvas() {
@@ -37,14 +34,19 @@ export default function GenerativeCanvas() {
     }, 3000);
   };
 
-  const handleQualityModeChange = (mode: QualityLevel | 'auto') => {
+  const handleQualityModeChange = async (mode: QualityLevel | 'auto') => {
     setQualityMode(mode);
     if (performanceMonitorRef.current) {
       performanceMonitorRef.current.setManualQuality(mode);
     }
     if (mode !== 'auto') {
       setQualityLevel(mode);
-      setQualitySettings(getQualitySettings(mode));
+      try {
+        const { getQualitySettings } = await import('@/lib/device-detection');
+        setQualitySettings(getQualitySettings(mode));
+      } catch (err) {
+        console.error('Failed to load quality settings:', err);
+      }
     }
   };
 
@@ -53,31 +55,38 @@ export default function GenerativeCanvas() {
   };
 
   useEffect(() => {
-    // Detect device capabilities and initialize performance monitoring
-    try {
-      const capabilities = detectDeviceCapabilities();
-      setDeviceCapabilities(capabilities);
-      setQualityLevel(capabilities.initialQualityLevel);
-      setQualitySettings(getQualitySettings(capabilities.initialQualityLevel));
-      
-      performanceMonitorRef.current = new PerformanceMonitor(
-        capabilities.initialQualityLevel
-      );
+    // Dynamically import device detection on client only
+    const initializeDeviceDetection = async () => {
+      try {
+        const { detectDeviceCapabilities, getQualitySettings, PerformanceMonitor } =
+          await import('@/lib/device-detection');
+        
+        const capabilities = detectDeviceCapabilities();
+        setDeviceCapabilities(capabilities);
+        setQualityLevel(capabilities.initialQualityLevel);
+        setQualitySettings(getQualitySettings(capabilities.initialQualityLevel));
+        
+        performanceMonitorRef.current = new PerformanceMonitor(
+          capabilities.initialQualityLevel
+        );
 
-      // Check WebGL support
-      const canvas = document.createElement('canvas');
-      const gl =
-        canvas.getContext('webgl') || canvas.getContext('webgl2');
-      if (!gl) {
+        // Check WebGL support
+        const canvas = document.createElement('canvas');
+        const gl =
+          canvas.getContext('webgl') || canvas.getContext('webgl2');
+        if (!gl) {
+          setHasWebGL(false);
+          setWebglError('WebGL not supported in your browser');
+        }
+      } catch (err) {
         setHasWebGL(false);
-        setWebglError('WebGL not supported in your browser');
+        setWebglError(
+          err instanceof Error ? err.message : 'Failed to initialize device detection'
+        );
       }
-    } catch (err) {
-      setHasWebGL(false);
-      setWebglError(
-        err instanceof Error ? err.message : 'Unknown WebGL error'
-      );
-    }
+    };
+
+    initializeDeviceDetection();
 
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
@@ -120,14 +129,19 @@ export default function GenerativeCanvas() {
   useEffect(() => {
     if (!performanceMonitorRef.current) return;
 
-    const monitoringInterval = setInterval(() => {
+    const monitoringInterval = setInterval(async () => {
       const { shouldAdjustQuality, newQuality } =
         performanceMonitorRef.current!.update();
 
       // Only apply auto quality adjustments if in auto mode
       if (qualityMode === 'auto' && shouldAdjustQuality && newQuality) {
         setQualityLevel(newQuality);
-        setQualitySettings(getQualitySettings(newQuality));
+        try {
+          const { getQualitySettings } = await import('@/lib/device-detection');
+          setQualitySettings(getQualitySettings(newQuality));
+        } catch (err) {
+          console.error('Failed to update quality settings:', err);
+        }
       }
     }, 1000);
 
