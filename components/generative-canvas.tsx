@@ -13,6 +13,7 @@ export default function GenerativeCanvas() {
   const [speed, setSpeed] = useState(1);
   const [waveIntensity, setWaveIntensity] = useState(1);
   const [colorPalette, setColorPalette] = useState(0);
+  const [blackHoleSize, setBlackHoleSize] = useState(1);
   const [showUI, setShowUI] = useState(true);
   const [hasWebGL, setHasWebGL] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
@@ -179,6 +180,7 @@ export default function GenerativeCanvas() {
         qualitySettings={qualitySettings}
         performanceMonitor={performanceMonitorRef.current}
         onFpsUpdate={handleFpsUpdate}
+        blackHoleSize={blackHoleSize}
       />
 
       {/* UI Overlay */}
