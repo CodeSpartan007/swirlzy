@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import ShaderCanvas from '@/components/generative-shader';
+import type {
+  QualityLevel,
+  DeviceCapabilities,
+  QualitySettings,
+} from '@/lib/device-detection';
 
 export default function GenerativeCanvas() {
   const [isPaused, setIsPaused] = useState(false);
@@ -11,7 +16,13 @@ export default function GenerativeCanvas() {
   const [showUI, setShowUI] = useState(true);
   const [hasWebGL, setHasWebGL] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
+  const [qualityLevel, setQualityLevel] = useState<QualityLevel>('high');
+  const [qualityMode, setQualityMode] = useState<QualityLevel | 'auto'>('auto');
+  const [deviceCapabilities, setDeviceCapabilities] = useState<DeviceCapabilities | null>(null);
+  const [fps, setFps] = useState(60);
+  const [qualitySettings, setQualitySettings] = useState<QualitySettings | null>(null);
   const hideUITimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const performanceMonitorRef = useRef<PerformanceMonitor | null>(null);
 
   const handleMouseMove = () => {
     setShowUI(true);
@@ -23,22 +34,59 @@ export default function GenerativeCanvas() {
     }, 3000);
   };
 
-  useEffect(() => {
-    // Check WebGL support
-    try {
-      const canvas = document.createElement('canvas');
-      const gl =
-        canvas.getContext('webgl') || canvas.getContext('webgl2');
-      if (!gl) {
-        setHasWebGL(false);
-        setWebglError('WebGL not supported in your browser');
-      }
-    } catch (err) {
-      setHasWebGL(false);
-      setWebglError(
-        err instanceof Error ? err.message : 'Unknown WebGL error'
-      );
+  const handleQualityModeChange = async (mode: QualityLevel | 'auto') => {
+    setQualityMode(mode);
+    if (performanceMonitorRef.current) {
+      performanceMonitorRef.current.setManualQuality(mode);
     }
+    if (mode !== 'auto') {
+      setQualityLevel(mode);
+      try {
+        const { getQualitySettings } = await import('@/lib/device-detection');
+        setQualitySettings(getQualitySettings(mode));
+      } catch (err) {
+        console.error('Failed to load quality settings:', err);
+      }
+    }
+  };
+
+  const handleFpsUpdate = (newFps: number) => {
+    setFps(newFps);
+  };
+
+  useEffect(() => {
+    // Dynamically import device detection on client only
+    const initializeDeviceDetection = async () => {
+      try {
+        const { detectDeviceCapabilities, getQualitySettings, PerformanceMonitor } =
+          await import('@/lib/device-detection');
+        
+        const capabilities = detectDeviceCapabilities();
+        setDeviceCapabilities(capabilities);
+        setQualityLevel(capabilities.initialQualityLevel);
+        setQualitySettings(getQualitySettings(capabilities.initialQualityLevel));
+        
+        performanceMonitorRef.current = new PerformanceMonitor(
+          capabilities.initialQualityLevel
+        );
+
+        // Check WebGL support
+        const canvas = document.createElement('canvas');
+        const gl =
+          canvas.getContext('webgl') || canvas.getContext('webgl2');
+        if (!gl) {
+          setHasWebGL(false);
+          setWebglError('WebGL not supported in your browser');
+        }
+      } catch (err) {
+        setHasWebGL(false);
+        setWebglError(
+          err instanceof Error ? err.message : 'Failed to initialize device detection'
+        );
+      }
+    };
+
+    initializeDeviceDetection();
 
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
@@ -77,6 +125,29 @@ export default function GenerativeCanvas() {
     return () => window.removeEventListener('wheel', handleScroll);
   }, []);
 
+  // Performance monitoring and quality adjustment
+  useEffect(() => {
+    if (!performanceMonitorRef.current) return;
+
+    const monitoringInterval = setInterval(async () => {
+      const { shouldAdjustQuality, newQuality } =
+        performanceMonitorRef.current!.update();
+
+      // Only apply auto quality adjustments if in auto mode
+      if (qualityMode === 'auto' && shouldAdjustQuality && newQuality) {
+        setQualityLevel(newQuality);
+        try {
+          const { getQualitySettings } = await import('@/lib/device-detection');
+          setQualitySettings(getQualitySettings(newQuality));
+        } catch (err) {
+          console.error('Failed to update quality settings:', err);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(monitoringInterval);
+  }, [qualityMode]);
+
   // Fallback UI for WebGL not supported
   if (!hasWebGL) {
     return (
@@ -105,6 +176,9 @@ export default function GenerativeCanvas() {
         speed={speed}
         waveIntensity={waveIntensity}
         colorPalette={colorPalette}
+        qualitySettings={qualitySettings}
+        performanceMonitor={performanceMonitorRef.current}
+        onFpsUpdate={handleFpsUpdate}
       />
 
       {/* UI Overlay */}
@@ -138,8 +212,57 @@ export default function GenerativeCanvas() {
           <div className="text-gray-400 px-2 pt-2 border-t border-white/10">
             <div>Speed: {speed.toFixed(2)}x</div>
             <div>Wave: {waveIntensity.toFixed(2)}</div>
-            <div className="mt-2 text-gray-500">🖱 Move mouse</div>
-            <div className="text-gray-500">🔄 Scroll to adjust</div>
+            <div className="mt-4 text-gray-500 border-t border-white/10 pt-2">
+              <div className="text-yellow-400">Device: {deviceCapabilities?.deviceType}</div>
+              <div className="text-green-400">Quality: {qualityLevel}</div>
+              <div className="text-blue-400">FPS: {fps}</div>
+              <div className="mt-3 space-y-2">
+                <div className="text-xs font-semibold text-white">Quality Mode:</div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => handleQualityModeChange('auto')}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      qualityMode === 'auto'
+                        ? 'bg-blue-500/80 text-white'
+                        : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                    }`}
+                  >
+                    Auto
+                  </button>
+                  <button
+                    onClick={() => handleQualityModeChange('high')}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      qualityMode === 'high'
+                        ? 'bg-green-500/80 text-white'
+                        : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                    }`}
+                  >
+                    High
+                  </button>
+                  <button
+                    onClick={() => handleQualityModeChange('medium')}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      qualityMode === 'medium'
+                        ? 'bg-yellow-500/80 text-white'
+                        : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                    }`}
+                  >
+                    Med
+                  </button>
+                  <button
+                    onClick={() => handleQualityModeChange('low')}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      qualityMode === 'low'
+                        ? 'bg-red-500/80 text-white'
+                        : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                    }`}
+                  >
+                    Low
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2 text-gray-500 text-xs">Move mouse to interact</div>
+            </div>
           </div>
         </div>
       </div>

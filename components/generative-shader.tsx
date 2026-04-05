@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import type { QualitySettings, PerformanceMonitor } from '@/lib/device-detection';
 
 const vertexShader = `
   varying vec2 vUv;
@@ -22,6 +23,8 @@ const fragmentShader = `
   uniform float uClickTime;
   uniform float uRealClickTime;
   uniform float uSpeed;
+  uniform float uShaderComplexity;
+  uniform int uMaxFBMOctaves;
   uniform vec3 uColor1;
   uniform vec3 uColor2;
   uniform vec3 uColor3;
@@ -67,8 +70,11 @@ const fragmentShader = `
     float frequency = 1.0;
     float maxValue = 0.0;
     
+    // Clamp octaves to shader complexity setting
+    int maxOctaves = min(octaves, uMaxFBMOctaves);
+    
     for (int i = 0; i < 8; i++) {
-      if (i >= octaves) break;
+      if (i >= maxOctaves) break;
       
       value += amplitude * snoise(pos * frequency + time * 0.05);
       maxValue += amplitude;
@@ -407,6 +413,9 @@ interface ShaderCanvasProps {
   speed: number;
   waveIntensity: number;
   colorPalette: number;
+  qualitySettings: QualitySettings | null;
+  performanceMonitor: PerformanceMonitor | null;
+  onFpsUpdate?: (fps: number) => void;
 }
 
 export default function ShaderCanvas({
@@ -414,6 +423,9 @@ export default function ShaderCanvas({
   speed,
   waveIntensity,
   colorPalette,
+  qualitySettings,
+  performanceMonitor,
+  onFpsUpdate,
 }: ShaderCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -429,6 +441,11 @@ export default function ShaderCanvas({
   const animationIdRef = useRef<number | null>(null);
   const frozenTimeRef = useRef<number | null>(null);
   const wasPausedRef = useRef(false);
+  
+  // FPS tracking refs - updated every frame, state updated every 500ms
+  const fpsFrameCountRef = useRef(0);
+  const fpsLastUpdateRef = useRef(performance.now());
+  const fpsLastFrameTimeRef = useRef(performance.now());
 
   const colorPalettes = [
     // 1. Neon Pink & Purple
@@ -496,7 +513,8 @@ export default function ShaderCanvas({
       const width = window.innerWidth;
       const height = window.innerHeight;
       renderer.setSize(width, height);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      const pixelRatio = qualitySettings?.pixelRatio ?? Math.min(window.devicePixelRatio, 2);
+      renderer.setPixelRatio(pixelRatio);
     };
 
     handleResize();
@@ -514,6 +532,8 @@ export default function ShaderCanvas({
       uRealClickTime: { value: -10 },
       uSpeed: { value: speed },
       uWaveIntensity: { value: waveIntensity },
+      uShaderComplexity: { value: qualitySettings?.shaderComplexity ?? 1.0 },
+      uMaxFBMOctaves: { value: qualitySettings?.fbmOctaves ?? 6 },
       uColor1: { value: new THREE.Color(0xff006e) },
       uColor2: { value: new THREE.Color(0xfb5607) },
       uColor3: { value: new THREE.Color(0x8338ec) },
@@ -537,6 +557,26 @@ export default function ShaderCanvas({
     // Animation loop
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
+
+      // Calculate FPS independently every frame
+      const now = performance.now();
+      const deltaTime = now - fpsLastFrameTimeRef.current;
+      fpsLastFrameTimeRef.current = now;
+      fpsFrameCountRef.current++;
+
+      // Update FPS display every 500ms
+      const timeSinceLastUpdate = now - fpsLastUpdateRef.current;
+      if (timeSinceLastUpdate >= 500 && onFpsUpdate) {
+        const fps = Math.round((fpsFrameCountRef.current * 1000) / timeSinceLastUpdate);
+        onFpsUpdate(fps);
+        fpsFrameCountRef.current = 0;
+        fpsLastUpdateRef.current = now;
+      }
+
+      // Record frame timing for performance monitor
+      if (performanceMonitor) {
+        performanceMonitor.recordFrame();
+      }
 
       let elapsed: number;
       
@@ -580,6 +620,8 @@ export default function ShaderCanvas({
         material.uniforms.uMouseForce.value = mouseForceRef.current;
         material.uniforms.uSpeed.value = speed;
         material.uniforms.uWaveIntensity.value = waveIntensity;
+        material.uniforms.uShaderComplexity.value = qualitySettings?.shaderComplexity ?? 1.0;
+        material.uniforms.uMaxFBMOctaves.value = qualitySettings?.fbmOctaves ?? 6;
 
         // Dynamic palette cycling - continuously shift through color palettes (extremely slowly for smooth transitions)
         const cycleSpeed = 0.015; // Reduced from 0.03 for even smoother transitions
